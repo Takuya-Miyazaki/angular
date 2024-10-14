@@ -3,14 +3,14 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 import {CharCode} from '../../util/char_code';
-import {AttributeMarker, TAttributes} from '../interfaces/node';
+import {AttributeMarker} from '../interfaces/attribute_marker';
+import {TAttributes} from '../interfaces/node';
 import {CssSelector} from '../interfaces/projection';
-import {isProceduralRenderer, ProceduralRenderer3, RElement, Renderer3} from '../interfaces/renderer';
-
-
+import {Renderer} from '../interfaces/renderer';
+import {RElement} from '../interfaces/renderer_dom';
 
 /**
  * Assigns all attribute values to the provided element via the inferred renderer.
@@ -39,9 +39,7 @@ import {isProceduralRenderer, ProceduralRenderer3, RElement, Renderer3} from '..
  * @param attrs The attribute array of values that will be assigned to the element
  * @returns the index value that was last accessed in the attributes array
  */
-export function setUpAttributes(renderer: Renderer3, native: RElement, attrs: TAttributes): number {
-  const isProc = isProceduralRenderer(renderer);
-
+export function setUpAttributes(renderer: Renderer, native: RElement, attrs: TAttributes): number {
   let i = 0;
   while (i < attrs.length) {
     const value = attrs[i];
@@ -60,9 +58,7 @@ export function setUpAttributes(renderer: Renderer3, native: RElement, attrs: TA
       const attrName = attrs[i++] as string;
       const attrVal = attrs[i++] as string;
       ngDevMode && ngDevMode.rendererSetAttribute++;
-      isProc ?
-          (renderer as ProceduralRenderer3).setAttribute(native, attrName, attrVal, namespaceURI) :
-          native.setAttributeNS(namespaceURI, attrName, attrVal);
+      renderer.setAttribute(native, attrName, attrVal, namespaceURI);
     } else {
       // attrName is string;
       const attrName = value as string;
@@ -70,13 +66,9 @@ export function setUpAttributes(renderer: Renderer3, native: RElement, attrs: TA
       // Standard attributes
       ngDevMode && ngDevMode.rendererSetAttribute++;
       if (isAnimationProp(attrName)) {
-        if (isProc) {
-          (renderer as ProceduralRenderer3).setProperty(native, attrName, attrVal);
-        }
+        renderer.setProperty(native, attrName, attrVal);
       } else {
-        isProc ?
-            (renderer as ProceduralRenderer3).setAttribute(native, attrName, attrVal as string) :
-            native.setAttribute(attrName, attrVal as string);
+        renderer.setAttribute(native, attrName, attrVal as string);
       }
       i++;
     }
@@ -96,9 +88,12 @@ export function setUpAttributes(renderer: Renderer3, native: RElement, attrs: TA
  * @param marker The attribute marker to test.
  * @returns true if the marker is a "name-only" marker (e.g. `Bindings`, `Template` or `I18n`).
  */
-export function isNameOnlyAttributeMarker(marker: string|AttributeMarker|CssSelector) {
-  return marker === AttributeMarker.Bindings || marker === AttributeMarker.Template ||
-      marker === AttributeMarker.I18n;
+export function isNameOnlyAttributeMarker(marker: string | AttributeMarker | CssSelector) {
+  return (
+    marker === AttributeMarker.Bindings ||
+    marker === AttributeMarker.Template ||
+    marker === AttributeMarker.I18n
+  );
 }
 
 export function isAnimationProp(name: string): boolean {
@@ -116,7 +111,10 @@ export function isAnimationProp(name: string): boolean {
  * @param dst Location of where the merged `TAttributes` should end up.
  * @param src `TAttributes` which should be appended to `dst`
  */
-export function mergeHostAttrs(dst: TAttributes|null, src: TAttributes|null): TAttributes|null {
+export function mergeHostAttrs(
+  dst: TAttributes | null,
+  src: TAttributes | null,
+): TAttributes | null {
   if (src === null || src.length === 0) {
     // do nothing
   } else if (dst === null || dst.length === 0) {
@@ -132,8 +130,9 @@ export function mergeHostAttrs(dst: TAttributes|null, src: TAttributes|null): TA
         if (srcMarker === AttributeMarker.NamespaceURI) {
           // Case where we need to consume `key1`, `key2`, `value` items.
         } else if (
-            srcMarker === AttributeMarker.ImplicitAttributes ||
-            srcMarker === AttributeMarker.Styles) {
+          srcMarker === AttributeMarker.ImplicitAttributes ||
+          srcMarker === AttributeMarker.Styles
+        ) {
           // Case where we have to consume `key1` and `value` only.
           mergeHostAttribute(dst, srcMarker, item as string, null, src[++i] as string);
         } else {
@@ -156,8 +155,12 @@ export function mergeHostAttrs(dst: TAttributes|null, src: TAttributes|null): TA
  * @param value Value to add or to overwrite to `TAttributes` Only used if `marker` is not Class.
  */
 export function mergeHostAttribute(
-    dst: TAttributes, marker: AttributeMarker, key1: string, key2: string|null,
-    value: string|null): void {
+  dst: TAttributes,
+  marker: AttributeMarker,
+  key1: string,
+  key2: string | null,
+  value: string | null,
+): void {
   let i = 0;
   // Assume that new markers will be inserted at the end.
   let markerInsertPosition = dst.length;

@@ -3,13 +3,14 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {runOneBuild} from '@angular/bazel';
+import {runfiles} from '@bazel/runfiles';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as ts from 'typescript';
+import ts from 'typescript';
 
 import {createTsConfig} from './tsconfig_template';
 
@@ -23,37 +24,41 @@ export interface TestSupport {
     depPaths,
     pathMapping,
   }: {
-    srcTargetPath: string,
-    depPaths?: string[],
-    pathMapping?: Array<{moduleName: string; path: string;}>,
+    srcTargetPath: string;
+    depPaths?: string[];
+    pathMapping?: Array<{moduleName: string; path: string}>;
   }): {compilerOptions: ts.CompilerOptions};
   read(fileName: string): string;
   write(fileName: string, content: string): void;
   writeFiles(...mockDirs: {[fileName: string]: string}[]): void;
   shouldExist(fileName: string): void;
   shouldNotExist(fileName: string): void;
-  runOneBuild(): boolean;
+  runOneBuild(): Promise<boolean>;
 }
 
 export function setup({
   bazelBin = 'bazel-bin',
   tsconfig = 'tsconfig.json',
 }: {
-  bazelBin?: string,
-  tsconfig?: string,
+  bazelBin?: string;
+  tsconfig?: string;
 } = {}): TestSupport {
   const runfilesPath = process.env['TEST_SRCDIR'];
 
   const basePath = makeTempDir(runfilesPath);
 
+  console.error(basePath);
+
   const bazelBinPath = path.resolve(basePath, bazelBin);
   fs.mkdirSync(bazelBinPath);
 
-  const angularCorePath = path.dirname(require.resolve('angular/packages/core'));
+  const angularCorePath = runfiles.resolve('angular/packages/core');
   const tsConfigJsonPath = path.resolve(basePath, tsconfig);
 
   const emptyTsConfig = ts.readConfigFile(
-      require.resolve('angular/packages/bazel/test/ngc-wrapped/empty/empty_tsconfig.json'), read);
+    runfiles.resolve('angular/packages/bazel/test/ngc-wrapped/empty/empty_tsconfig.json'),
+    read,
+  );
   const typesRoots = (emptyTsConfig as any).config.compilerOptions.typeRoots[0];
 
   return {
@@ -107,9 +112,9 @@ export function setup({
     depPaths = [],
     pathMapping = [],
   }: {
-    srcTargetPath: string,
-    depPaths?: string[],
-    pathMapping?: Array<{moduleName: string; path: string;}>,
+    srcTargetPath: string;
+    depPaths?: string[];
+    pathMapping?: Array<{moduleName: string; path: string}>;
   }) {
     srcTargetPath = path.resolve(basePath, srcTargetPath);
     const compilationTargetSrc = listFilesRecursive(srcTargetPath);
@@ -119,22 +124,25 @@ export function setup({
     depPaths = depPaths.concat([angularCorePath]);
     pathMapping = pathMapping.concat([
       {moduleName: '@angular/core', path: angularCorePath},
-      {moduleName: 'angular/packages/core', path: angularCorePath}
+      {moduleName: 'angular/packages/core', path: angularCorePath},
     ]);
 
     for (const depPath of depPaths) {
-      files.push(...listFilesRecursive(depPath).filter(f => f.endsWith('.d.ts')));
+      files.push(...listFilesRecursive(depPath).filter((f) => f.endsWith('.d.ts')));
     }
 
     const pathMappingObj = {};
     for (const mapping of pathMapping) {
       pathMappingObj[mapping.moduleName] = [mapping.path];
-      pathMappingObj[path.posix.join(mapping.moduleName, '*')] =
-          [path.posix.join(mapping.path, '*')];
+      pathMappingObj[path.posix.join(mapping.moduleName, '*')] = [
+        path.posix.join(mapping.path, '*'),
+      ];
     }
 
     const emptyTsConfig = ts.readConfigFile(
-        require.resolve('angular/packages/bazel/test/ngc-wrapped/empty/empty_tsconfig.json'), read);
+      runfiles.resolve('angular/packages/bazel/test/ngc-wrapped/empty/empty_tsconfig.json'),
+      read,
+    );
 
     const tsconfig = createTsConfig({
       defaultTsConfig: emptyTsConfig.config,
@@ -161,7 +169,7 @@ export function setup({
     }
   }
 
-  function runOneBuildImpl(): boolean {
+  async function runOneBuildImpl(): Promise<boolean> {
     return runOneBuild(['@' + tsConfigJsonPath]);
   }
 }
@@ -174,7 +182,7 @@ function makeTempDir(baseDir: string): string {
 }
 
 export function listFilesRecursive(dir: string, fileList: string[] = []) {
-  fs.readdirSync(dir).forEach(file => {
+  fs.readdirSync(dir).forEach((file) => {
     if (fs.statSync(path.join(dir, file)).isDirectory()) {
       listFilesRecursive(path.join(dir, file), fileList);
     } else {

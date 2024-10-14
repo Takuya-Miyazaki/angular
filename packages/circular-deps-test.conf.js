@@ -3,7 +3,7 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 const path = require('path');
@@ -11,11 +11,11 @@ const path = require('path');
 module.exports = {
   baseDir: '../',
   goldenFile: '../goldens/circular-deps/packages.json',
-  // The test should not capture deprecated packages such as `http`, or the `webworker` platform.
-  glob: `./!(http|platform-webworker|platform-webworker-dynamic)/**/*.ts`,
+  glob: `./**/*.ts`,
   // Command that will be displayed if the golden needs to be updated.
   approveCommand: 'yarn ts-circular-deps:approve',
-  resolveModule: resolveModule
+  resolveModule: resolveModule,
+  ignoreTypeOnlyChecks: true,
 };
 
 /**
@@ -25,7 +25,7 @@ module.exports = {
  */
 function resolveModule(specifier) {
   if (specifier.startsWith('@angular/')) {
-    return path.join(__dirname, specifier.substr('@angular/'.length));
+    return path.join(__dirname, specifier.slice('@angular/'.length));
   }
   return null;
 }

@@ -3,12 +3,13 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import * as ts from 'typescript';
+import ts from 'typescript';
 
 import {ErrorCode, ngErrorCode} from '../../diagnostics';
+import {DeclarationNode} from '../../reflection';
 
 import {ReferenceGraph} from './reference_graph';
 
@@ -35,11 +36,14 @@ import {ReferenceGraph} from './reference_graph';
  * properly.
  */
 export function checkForPrivateExports(
-    entryPoint: ts.SourceFile, checker: ts.TypeChecker, refGraph: ReferenceGraph): ts.Diagnostic[] {
+  entryPoint: ts.SourceFile,
+  checker: ts.TypeChecker,
+  refGraph: ReferenceGraph,
+): ts.Diagnostic[] {
   const diagnostics: ts.Diagnostic[] = [];
 
   // Firstly, compute the exports of the entry point. These are all the Exported classes.
-  const topLevelExports = new Set<ts.Declaration>();
+  const topLevelExports = new Set<DeclarationNode>();
 
   // Do this via `ts.TypeChecker.getExportsOfModule`.
   const moduleSymbol = checker.getSymbolAtLocation(entryPoint);
@@ -50,7 +54,7 @@ export function checkForPrivateExports(
 
   // Loop through the exported symbols, de-alias if needed, and add them to `topLevelExports`.
   // TODO(alxhub): use proper iteration when build.sh is removed. (#27762)
-  exportedSymbols.forEach(symbol => {
+  exportedSymbols.forEach((symbol) => {
     if (symbol.flags & ts.SymbolFlags.Alias) {
       symbol = checker.getAliasedSymbol(symbol);
     }
@@ -63,13 +67,13 @@ export function checkForPrivateExports(
   // Next, go through each exported class and expand it to the set of classes it makes Visible,
   // using the `ReferenceGraph`. For each Visible class, verify that it's also Exported, and queue
   // an error if it isn't. `checkedSet` ensures only one error is queued per class.
-  const checkedSet = new Set<ts.Declaration>();
+  const checkedSet = new Set<DeclarationNode>();
 
   // Loop through each Exported class.
   // TODO(alxhub): use proper iteration when the legacy build is removed. (#27762)
-  topLevelExports.forEach(mainExport => {
+  topLevelExports.forEach((mainExport) => {
     // Loop through each class made Visible by the Exported class.
-    refGraph.transitiveReferencesOf(mainExport).forEach(transitiveReference => {
+    refGraph.transitiveReferencesOf(mainExport).forEach((transitiveReference) => {
       // Skip classes which have already been checked.
       if (checkedSet.has(transitiveReference)) {
         return;
@@ -89,7 +93,7 @@ export function checkForPrivateExports(
         let visibleVia = 'NgModule exports';
         const transitivePath = refGraph.pathFrom(mainExport, transitiveReference);
         if (transitivePath !== null) {
-          visibleVia = transitivePath.map(seg => getNameOfDeclaration(seg)).join(' -> ');
+          visibleVia = transitivePath.map((seg) => getNameOfDeclaration(seg)).join(' -> ');
         }
 
         const diagnostic: ts.Diagnostic = {
@@ -97,9 +101,7 @@ export function checkForPrivateExports(
           code: ngErrorCode(ErrorCode.SYMBOL_NOT_EXPORTED),
           file: transitiveReference.getSourceFile(),
           ...getPosOfDeclaration(transitiveReference),
-          messageText: `Unsupported private ${descriptor} ${name}. This ${
-              descriptor} is visible to consumers via ${
-              visibleVia}, but is not exported from the top-level library entrypoint.`,
+          messageText: `Unsupported private ${descriptor} ${name}. This ${descriptor} is visible to consumers via ${visibleVia}, but is not exported from the top-level library entrypoint.`,
         };
 
         diagnostics.push(diagnostic);
@@ -110,7 +112,7 @@ export function checkForPrivateExports(
   return diagnostics;
 }
 
-function getPosOfDeclaration(decl: ts.Declaration): {start: number, length: number} {
+function getPosOfDeclaration(decl: DeclarationNode): {start: number; length: number} {
   const node: ts.Node = getIdentifierOfDeclaration(decl) || decl;
   return {
     start: node.getStart(),
@@ -118,22 +120,26 @@ function getPosOfDeclaration(decl: ts.Declaration): {start: number, length: numb
   };
 }
 
-function getIdentifierOfDeclaration(decl: ts.Declaration): ts.Identifier|null {
-  if ((ts.isClassDeclaration(decl) || ts.isVariableDeclaration(decl) ||
-       ts.isFunctionDeclaration(decl)) &&
-      decl.name !== undefined && ts.isIdentifier(decl.name)) {
+function getIdentifierOfDeclaration(decl: DeclarationNode): ts.Identifier | null {
+  if (
+    (ts.isClassDeclaration(decl) ||
+      ts.isVariableDeclaration(decl) ||
+      ts.isFunctionDeclaration(decl)) &&
+    decl.name !== undefined &&
+    ts.isIdentifier(decl.name)
+  ) {
     return decl.name;
   } else {
     return null;
   }
 }
 
-function getNameOfDeclaration(decl: ts.Declaration): string {
+function getNameOfDeclaration(decl: DeclarationNode): string {
   const id = getIdentifierOfDeclaration(decl);
   return id !== null ? id.text : '(unnamed)';
 }
 
-function getDescriptorOfDeclaration(decl: ts.Declaration): string {
+function getDescriptorOfDeclaration(decl: DeclarationNode): string {
   switch (decl.kind) {
     case ts.SyntaxKind.ClassDeclaration:
       return 'class';

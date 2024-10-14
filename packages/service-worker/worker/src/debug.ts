@@ -3,12 +3,13 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {Adapter} from './adapter';
 import {Debuggable, DebugLogger} from './api';
 
+const SW_VERSION = '0.0.0-PLACEHOLDER';
 const DEBUG_LOG_BUFFER_SIZE = 100;
 
 interface DebugMessage {
@@ -26,7 +27,10 @@ export class DebugHandler implements DebugLogger {
   private debugLogA: DebugMessage[] = [];
   private debugLogB: DebugMessage[] = [];
 
-  constructor(readonly driver: Debuggable, readonly adapter: Adapter) {}
+  constructor(
+    readonly driver: Debuggable,
+    readonly adapter: Adapter,
+  ) {}
 
   async handleFetch(req: Request): Promise<Response> {
     const [state, versions, idle] = await Promise.all([
@@ -37,21 +41,24 @@ export class DebugHandler implements DebugLogger {
 
     const msgState = `NGSW Debug Info:
 
+Driver version: ${SW_VERSION}
 Driver state: ${state.state} (${state.why})
 Latest manifest hash: ${state.latestHash || 'none'}
 Last update check: ${this.since(state.lastUpdateCheck)}`;
 
     const msgVersions = versions
-                            .map(version => `=== Version ${version.hash} ===
+      .map(
+        (version) => `=== Version ${version.hash} ===
 
-Clients: ${version.clients.join(', ')}`)
-                            .join('\n\n');
+Clients: ${version.clients.join(', ')}`,
+      )
+      .join('\n\n');
 
     const msgIdle = `=== Idle Task Queue ===
 Last update tick: ${this.since(idle.lastTrigger)}
 Last update run: ${this.since(idle.lastRun)}
 Task queue:
-${idle.queue.map(v => ' * ' + v).join('\n')}
+${idle.queue.map((v) => ' * ' + v).join('\n')}
 
 Debug log:
 ${this.formatDebugLog(this.debugLogB)}
@@ -59,15 +66,16 @@ ${this.formatDebugLog(this.debugLogA)}
 `;
 
     return this.adapter.newResponse(
-        `${msgState}
+      `${msgState}
 
 ${msgVersions}
 
 ${msgIdle}`,
-        {headers: this.adapter.newHeaders({'Content-Type': 'text/plain'})});
+      {headers: this.adapter.newHeaders({'Content-Type': 'text/plain'})},
+    );
   }
 
-  since(time: number|null): string {
+  since(time: number | null): string {
     if (time === null) {
       return 'never';
     }
@@ -81,12 +89,17 @@ ${msgIdle}`,
     const seconds = Math.floor(age / 1000);
     const millis = age % 1000;
 
-    return '' + (days > 0 ? `${days}d` : '') + (hours > 0 ? `${hours}h` : '') +
-        (minutes > 0 ? `${minutes}m` : '') + (seconds > 0 ? `${seconds}s` : '') +
-        (millis > 0 ? `${millis}u` : '');
+    return (
+      '' +
+      (days > 0 ? `${days}d` : '') +
+      (hours > 0 ? `${hours}h` : '') +
+      (minutes > 0 ? `${minutes}m` : '') +
+      (seconds > 0 ? `${seconds}s` : '') +
+      (millis > 0 ? `${millis}u` : '')
+    );
   }
 
-  log(value: string|Error, context: string = ''): void {
+  log(value: string | Error, context: string = ''): void {
     // Rotate the buffers if debugLogA has grown too large.
     if (this.debugLogA.length === DEBUG_LOG_BUFFER_SIZE) {
       this.debugLogB = this.debugLogA;
@@ -107,7 +120,8 @@ ${msgIdle}`,
   }
 
   private formatDebugLog(log: DebugMessage[]): string {
-    return log.map(entry => `[${this.since(entry.time)}] ${entry.value} ${entry.context}`)
-        .join('\n');
+    return log
+      .map((entry) => `[${this.since(entry.time)}] ${entry.value} ${entry.context}`)
+      .join('\n');
   }
 }

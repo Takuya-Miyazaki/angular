@@ -3,51 +3,11 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {InjectionToken} from '../di/injection_token';
-import {Type} from '../interface/type';
+import {ProviderToken} from '../di/provider_token';
 import {makePropDecorator} from '../util/decorators';
-
-/**
- * A DI token that you can use to create a virtual [provider](guide/glossary#provider)
- * that will populate the `entryComponents` field of components and NgModules
- * based on its `useValue` property value.
- * All components that are referenced in the `useValue` value (either directly
- * or in a nested array or map) are added to the `entryComponents` property.
- *
- * @usageNotes
- *
- * The following example shows how the router can populate the `entryComponents`
- * field of an NgModule based on a router configuration that refers
- * to components.
- *
- * ```typescript
- * // helper function inside the router
- * function provideRoutes(routes) {
- *   return [
- *     {provide: ROUTES, useValue: routes},
- *     {provide: ANALYZE_FOR_ENTRY_COMPONENTS, useValue: routes, multi: true}
- *   ];
- * }
- *
- * // user code
- * let routes = [
- *   {path: '/root', component: RootComp},
- *   {path: '/teams', component: TeamsComp}
- * ];
- *
- * @NgModule({
- *   providers: [provideRoutes(routes)]
- * })
- * class ModuleWithRoutes {}
- * ```
- *
- * @publicApi
- * @deprecated Since 9.0.0. With Ivy, this property is no longer necessary.
- */
-export const ANALYZE_FOR_ENTRY_COMPONENTS = new InjectionToken<any>('AnalyzeForEntryComponents');
 
 /**
  * Type of the `Attribute` decorator / constructor function.
@@ -75,9 +35,8 @@ export interface AttributeDecorator {
    * @publicApi
    */
   (name: string): any;
-  new(name: string): Attribute;
+  new (name: string): Attribute;
 }
-
 
 /**
  * Type of the Attribute metadata.
@@ -98,20 +57,39 @@ export interface Attribute {
  */
 export interface Query {
   descendants: boolean;
+  emitDistinctChangesOnly: boolean;
   first: boolean;
   read: any;
   isViewQuery: boolean;
   selector: any;
   static?: boolean;
+
+  /**
+   * @internal
+   *
+   * Whether the query is a signal query.
+   *
+   * This option exists for JIT compatibility. Users are not expected to use this.
+   * Angular needs a way to capture queries from classes so that the internal query
+   * functions can be generated. This needs to happen before the component is instantiated.
+   * Due to this, for JIT compilation, signal queries need an additional decorator
+   * declaring the query. Angular provides a TS transformer to automatically handle this
+   * for JIT usage (e.g. in tests).
+   */
+  isSignal?: boolean;
 }
+
+// Stores the default value of `emitDistinctChangesOnly` when the `emitDistinctChangesOnly` is not
+// explicitly set.
+export const emitDistinctChangesOnlyDefaultValue = true;
 
 /**
  * Base class for query metadata.
  *
- * @see `ContentChildren`.
- * @see `ContentChild`.
- * @see `ViewChildren`.
- * @see `ViewChild`.
+ * @see {@link ContentChildren}
+ * @see {@link ContentChild}
+ * @see {@link ViewChildren}
+ * @see {@link ViewChild}
  *
  * @publicApi
  */
@@ -120,12 +98,13 @@ export abstract class Query {}
 /**
  * Type of the ContentChildren decorator / constructor function.
  *
- * @see `ContentChildren`.
+ * @see {@link ContentChildren}
  * @publicApi
  */
 export interface ContentChildrenDecorator {
   /**
-   * Parameter decorator that configures a content query.
+   * @description
+   * Property decorator that configures a content query.
    *
    * Use to get the `QueryList` of elements or directives from the content DOM.
    * Any time a child element is added, removed, or moved, the query list will be
@@ -139,8 +118,35 @@ export interface ContentChildrenDecorator {
    * **Metadata Properties**:
    *
    * * **selector** - The directive type or the name used for querying.
-   * * **descendants** - True to include all descendants, otherwise include only direct children.
+   * * **descendants** - If `true` include all descendants of the element. If `false` then only
+   * query direct children of the element.
+   * * **emitDistinctChangesOnly** - The ` QueryList#changes` observable will emit new values only
+   *   if the QueryList result has changed. When `false` the `changes` observable might emit even
+   *   if the QueryList has not changed.
+   *   ** Note: *** This config option is **deprecated**, it will be permanently set to `true` and
+   *   removed in future versions of Angular.
    * * **read** - Used to read a different token from the queried elements.
+   *
+   * The following selectors are supported.
+   *   * Any class with the `@Component` or `@Directive` decorator
+   *   * A template reference variable as a string (e.g. query `<my-component #cmp></my-component>`
+   * with `@ContentChildren('cmp')`)
+   *   * Any provider defined in the child component tree of the current component (e.g.
+   * `@ContentChildren(SomeService) someService: SomeService`)
+   *   * Any provider defined through a string token (e.g. `@ContentChildren('someToken')
+   * someTokenVal: any`)
+   *   * A `TemplateRef` (e.g. query `<ng-template></ng-template>` with
+   * `@ContentChildren(TemplateRef) template;`)
+   *
+   * In addition, multiple string selectors can be separated with a comma (e.g.
+   * `@ContentChildren('cmp1,cmp2')`)
+   *
+   * The following values are supported by `read`:
+   *   * Any class with the `@Component` or `@Directive` decorator
+   *   * Any provider defined on the injector of the component that is matched by the `selector` of
+   * this query
+   *   * Any provider defined through a string token (e.g. `{provide: 'token', useValue: 'val'}`)
+   *   * `TemplateRef`, `ElementRef`, and `ViewContainerRef`
    *
    * @usageNotes
    *
@@ -157,10 +163,18 @@ export interface ContentChildrenDecorator {
    *
    * @Annotation
    */
-  (selector: Type<any>|InjectionToken<unknown>|Function|string,
-   opts?: {descendants?: boolean, read?: any}): any;
-  new(selector: Type<any>|InjectionToken<unknown>|Function|string,
-      opts?: {descendants?: boolean, read?: any}): Query;
+  (
+    selector: ProviderToken<unknown> | Function | string,
+    opts?: {
+      descendants?: boolean;
+      emitDistinctChangesOnly?: boolean;
+      read?: any;
+    },
+  ): any;
+  new (
+    selector: ProviderToken<unknown> | Function | string,
+    opts?: {descendants?: boolean; emitDistinctChangesOnly?: boolean; read?: any},
+  ): Query;
 }
 
 /**
@@ -180,10 +194,17 @@ export type ContentChildren = Query;
  * @publicApi
  */
 export const ContentChildren: ContentChildrenDecorator = makePropDecorator(
-    'ContentChildren',
-    (selector?: any, data: any = {}) =>
-        ({selector, first: false, isViewQuery: false, descendants: false, ...data}),
-    Query);
+  'ContentChildren',
+  (selector?: any, opts: any = {}) => ({
+    selector,
+    first: false,
+    isViewQuery: false,
+    descendants: false,
+    emitDistinctChangesOnly: emitDistinctChangesOnlyDefaultValue,
+    ...opts,
+  }),
+  Query,
+);
 
 /**
  * Type of the ContentChild decorator / constructor function.
@@ -192,13 +213,12 @@ export const ContentChildren: ContentChildrenDecorator = makePropDecorator(
  */
 export interface ContentChildDecorator {
   /**
-   * Parameter decorator that configures a content query.
+   * @description
+   * Property decorator that configures a content query.
    *
    * Use to get the first element or the directive matching the selector from the content DOM.
    * If the content DOM changes, and a new child matches the selector,
    * the property will be updated.
-   *
-   * Content queries are set before the `ngAfterContentInit` callback is called.
    *
    * Does not retrieve elements or directives that are in other components' templates,
    * since a component's template is always a black box to its ancestors.
@@ -206,9 +226,40 @@ export interface ContentChildDecorator {
    * **Metadata Properties**:
    *
    * * **selector** - The directive type or the name used for querying.
+   * * **descendants** - If `true` (default) include all descendants of the element. If `false` then
+   * only query direct children of the element.
    * * **read** - Used to read a different token from the queried element.
    * * **static** - True to resolve query results before change detection runs,
    * false to resolve after change detection. Defaults to false.
+   *
+   * The following selectors are supported.
+   *   * Any class with the `@Component` or `@Directive` decorator
+   *   * A template reference variable as a string (e.g. query `<my-component #cmp></my-component>`
+   * with `@ContentChild('cmp')`)
+   *   * Any provider defined in the child component tree of the current component (e.g.
+   * `@ContentChild(SomeService) someService: SomeService`)
+   *   * Any provider defined through a string token (e.g. `@ContentChild('someToken') someTokenVal:
+   * any`)
+   *   * A `TemplateRef` (e.g. query `<ng-template></ng-template>` with `@ContentChild(TemplateRef)
+   * template;`)
+   *
+   * The following values are supported by `read`:
+   *   * Any class with the `@Component` or `@Directive` decorator
+   *   * Any provider defined on the injector of the component that is matched by the `selector` of
+   * this query
+   *   * Any provider defined through a string token (e.g. `{provide: 'token', useValue: 'val'}`)
+   *   * `TemplateRef`, `ElementRef`, and `ViewContainerRef`
+   *
+   * Difference between dynamic and static queries:
+   *
+   * | Queries                             | Details |
+   * |:---                                 |:---     |
+   * | Dynamic queries \(`static: false`\) | The query resolves before the `ngAfterContentInit()`
+   * callback is called. The result will be updated for changes to your view, such as changes to
+   * `ngIf` and `ngFor` blocks. | | Static queries \(`static: true`\)   | The query resolves once
+   * the view has been created, but before change detection runs (before the `ngOnInit()` callback
+   * is called). The result, though, will never be updated to reflect changes to your view, such as
+   * changes to `ngIf` and `ngFor` blocks.  |
    *
    * @usageNotes
    *
@@ -220,10 +271,14 @@ export interface ContentChildDecorator {
    *
    * @Annotation
    */
-  (selector: Type<any>|InjectionToken<unknown>|Function|string,
-   opts?: {read?: any, static?: boolean}): any;
-  new(selector: Type<any>|InjectionToken<unknown>|Function|string,
-      opts?: {read?: any, static?: boolean}): ContentChild;
+  (
+    selector: ProviderToken<unknown> | Function | string,
+    opts?: {descendants?: boolean; read?: any; static?: boolean},
+  ): any;
+  new (
+    selector: ProviderToken<unknown> | Function | string,
+    opts?: {descendants?: boolean; read?: any; static?: boolean},
+  ): ContentChild;
 }
 
 /**
@@ -242,21 +297,28 @@ export type ContentChild = Query;
  * @publicApi
  */
 export const ContentChild: ContentChildDecorator = makePropDecorator(
-    'ContentChild',
-    (selector?: any, data: any = {}) =>
-        ({selector, first: true, isViewQuery: false, descendants: true, ...data}),
-    Query);
+  'ContentChild',
+  (selector?: any, opts: any = {}) => ({
+    selector,
+    first: true,
+    isViewQuery: false,
+    descendants: true,
+    ...opts,
+  }),
+  Query,
+);
 
 /**
  * Type of the ViewChildren decorator / constructor function.
  *
- * @see `ViewChildren`.
+ * @see {@link ViewChildren}
  *
  * @publicApi
  */
 export interface ViewChildrenDecorator {
   /**
-   * Parameter decorator that configures a view query.
+   * @description
+   * Property decorator that configures a view query.
    *
    * Use to get the `QueryList` of elements or directives from the view DOM.
    * Any time a child element is added, removed, or moved, the query list will be updated,
@@ -268,6 +330,32 @@ export interface ViewChildrenDecorator {
    *
    * * **selector** - The directive type or the name used for querying.
    * * **read** - Used to read a different token from the queried elements.
+   * * **emitDistinctChangesOnly** - The ` QueryList#changes` observable will emit new values only
+   *   if the QueryList result has changed. When `false` the `changes` observable might emit even
+   *   if the QueryList has not changed.
+   *   ** Note: *** This config option is **deprecated**, it will be permanently set to `true` and
+   * removed in future versions of Angular.
+   *
+   * The following selectors are supported.
+   *   * Any class with the `@Component` or `@Directive` decorator
+   *   * A template reference variable as a string (e.g. query `<my-component #cmp></my-component>`
+   * with `@ViewChildren('cmp')`)
+   *   * Any provider defined in the child component tree of the current component (e.g.
+   * `@ViewChildren(SomeService) someService!: SomeService`)
+   *   * Any provider defined through a string token (e.g. `@ViewChildren('someToken')
+   * someTokenVal!: any`)
+   *   * A `TemplateRef` (e.g. query `<ng-template></ng-template>` with `@ViewChildren(TemplateRef)
+   * template;`)
+   *
+   * In addition, multiple string selectors can be separated with a comma (e.g.
+   * `@ViewChildren('cmp1,cmp2')`)
+   *
+   * The following values are supported by `read`:
+   *   * Any class with the `@Component` or `@Directive` decorator
+   *   * Any provider defined on the injector of the component that is matched by the `selector` of
+   * this query
+   *   * Any provider defined through a string token (e.g. `{provide: 'token', useValue: 'val'}`)
+   *   * `TemplateRef`, `ElementRef`, and `ViewContainerRef`
    *
    * @usageNotes
    *
@@ -279,9 +367,14 @@ export interface ViewChildrenDecorator {
    *
    * @Annotation
    */
-  (selector: Type<any>|InjectionToken<unknown>|Function|string, opts?: {read?: any}): any;
-  new(selector: Type<any>|InjectionToken<unknown>|Function|string,
-      opts?: {read?: any}): ViewChildren;
+  (
+    selector: ProviderToken<unknown> | Function | string,
+    opts?: {read?: any; emitDistinctChangesOnly?: boolean},
+  ): any;
+  new (
+    selector: ProviderToken<unknown> | Function | string,
+    opts?: {read?: any; emitDistinctChangesOnly?: boolean},
+  ): ViewChildren;
 }
 
 /**
@@ -298,15 +391,22 @@ export type ViewChildren = Query;
  * @publicApi
  */
 export const ViewChildren: ViewChildrenDecorator = makePropDecorator(
-    'ViewChildren',
-    (selector?: any, data: any = {}) =>
-        ({selector, first: false, isViewQuery: true, descendants: true, ...data}),
-    Query);
+  'ViewChildren',
+  (selector?: any, opts: any = {}) => ({
+    selector,
+    first: false,
+    isViewQuery: true,
+    descendants: true,
+    emitDistinctChangesOnly: emitDistinctChangesOnlyDefaultValue,
+    ...opts,
+  }),
+  Query,
+);
 
 /**
  * Type of the ViewChild decorator / constructor function.
  *
- * @see `ViewChild`.
+ * @see {@link ViewChild}
  * @publicApi
  */
 export interface ViewChildDecorator {
@@ -317,14 +417,12 @@ export interface ViewChildDecorator {
    * in the view DOM. If the view DOM changes, and a new child matches the selector,
    * the property is updated.
    *
-   * View queries are set before the `ngAfterViewInit` callback is called.
-   *
    * **Metadata Properties**:
    *
    * * **selector** - The directive type or the name used for querying.
    * * **read** - Used to read a different token from the queried elements.
-   * * **static** - True to resolve query results before change detection runs,
-   * false to resolve after change detection. Defaults to false.
+   * * **static** - `true` to resolve query results before change detection runs,
+   * `false` to resolve after change detection. Defaults to `false`.
    *
    *
    * The following selectors are supported.
@@ -338,7 +436,25 @@ export interface ViewChildDecorator {
    *   * A `TemplateRef` (e.g. query `<ng-template></ng-template>` with `@ViewChild(TemplateRef)
    * template;`)
    *
+   * The following values are supported by `read`:
+   *   * Any class with the `@Component` or `@Directive` decorator
+   *   * Any provider defined on the injector of the component that is matched by the `selector` of
+   * this query
+   *   * Any provider defined through a string token (e.g. `{provide: 'token', useValue: 'val'}`)
+   *   * `TemplateRef`, `ElementRef`, and `ViewContainerRef`
+   *
+   * Difference between dynamic and static queries:
+   *   * Dynamic queries \(`static: false`\) - The query resolves before the `ngAfterViewInit()`
+   * callback is called. The result will be updated for changes to your view, such as changes to
+   * `ngIf` and `ngFor` blocks.
+   *   * Static queries \(`static: true`\) - The query resolves once
+   * the view has been created, but before change detection runs (before the `ngOnInit()` callback
+   * is called). The result, though, will never be updated to reflect changes to your view, such as
+   * changes to `ngIf` and `ngFor` blocks.
+   *
    * @usageNotes
+   *
+   * ### Example 1
    *
    * {@example core/di/ts/viewChild/view_child_example.ts region='Component'}
    *
@@ -348,10 +464,14 @@ export interface ViewChildDecorator {
    *
    * @Annotation
    */
-  (selector: Type<any>|InjectionToken<unknown>|Function|string,
-   opts?: {read?: any, static?: boolean}): any;
-  new(selector: Type<any>|InjectionToken<unknown>|Function|string,
-      opts?: {read?: any, static?: boolean}): ViewChild;
+  (
+    selector: ProviderToken<unknown> | Function | string,
+    opts?: {read?: any; static?: boolean},
+  ): any;
+  new (
+    selector: ProviderToken<unknown> | Function | string,
+    opts?: {read?: any; static?: boolean},
+  ): ViewChild;
 }
 
 /**
@@ -368,7 +488,13 @@ export type ViewChild = Query;
  * @publicApi
  */
 export const ViewChild: ViewChildDecorator = makePropDecorator(
-    'ViewChild',
-    (selector: any, data: any) =>
-        ({selector, first: true, isViewQuery: true, descendants: true, ...data}),
-    Query);
+  'ViewChild',
+  (selector: any, opts: any) => ({
+    selector,
+    first: true,
+    isViewQuery: true,
+    descendants: true,
+    ...opts,
+  }),
+  Query,
+);

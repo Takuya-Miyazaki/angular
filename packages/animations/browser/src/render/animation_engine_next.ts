@@ -3,13 +3,16 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 import {AnimationMetadata, AnimationPlayer, AnimationTriggerMetadata} from '@angular/animations';
+
 import {TriggerAst} from '../dsl/animation_ast';
 import {buildAnimationAst} from '../dsl/animation_ast_builder';
 import {AnimationTrigger, buildTrigger} from '../dsl/animation_trigger';
 import {AnimationStyleNormalizer} from '../dsl/style_normalization/animation_style_normalizer';
+import {triggerBuildFailed} from '../error_helpers';
+import {warnTriggerBuild} from '../warning_helpers';
 
 import {AnimationDriver} from './animation_driver';
 import {parseTimelineCommand} from './shared';
@@ -26,29 +29,42 @@ export class AnimationEngine {
   public onRemovalComplete = (element: any, context: any) => {};
 
   constructor(
-      private bodyNode: any, private _driver: AnimationDriver,
-      normalizer: AnimationStyleNormalizer) {
-    this._transitionEngine = new TransitionAnimationEngine(bodyNode, _driver, normalizer);
-    this._timelineEngine = new TimelineAnimationEngine(bodyNode, _driver, normalizer);
+    doc: Document,
+    private _driver: AnimationDriver,
+    private _normalizer: AnimationStyleNormalizer,
+  ) {
+    this._transitionEngine = new TransitionAnimationEngine(doc.body, _driver, _normalizer);
+    this._timelineEngine = new TimelineAnimationEngine(doc.body, _driver, _normalizer);
 
     this._transitionEngine.onRemovalComplete = (element: any, context: any) =>
-        this.onRemovalComplete(element, context);
+      this.onRemovalComplete(element, context);
   }
 
   registerTrigger(
-      componentId: string, namespaceId: string, hostElement: any, name: string,
-      metadata: AnimationTriggerMetadata): void {
+    componentId: string,
+    namespaceId: string,
+    hostElement: any,
+    name: string,
+    metadata: AnimationTriggerMetadata,
+  ): void {
     const cacheKey = componentId + '-' + name;
     let trigger = this._triggerCache[cacheKey];
     if (!trigger) {
-      const errors: any[] = [];
-      const ast =
-          buildAnimationAst(this._driver, metadata as AnimationMetadata, errors) as TriggerAst;
+      const errors: Error[] = [];
+      const warnings: string[] = [];
+      const ast = buildAnimationAst(
+        this._driver,
+        metadata as AnimationMetadata,
+        errors,
+        warnings,
+      ) as TriggerAst;
       if (errors.length) {
-        throw new Error(`The animation trigger "${
-            name}" has failed to build due to the following errors:\n - ${errors.join('\n - ')}`);
+        throw triggerBuildFailed(name, errors);
       }
-      trigger = buildTrigger(name, ast);
+      if (warnings.length) {
+        warnTriggerBuild(name, warnings);
+      }
+      trigger = buildTrigger(name, ast, this._normalizer);
       this._triggerCache[cacheKey] = trigger;
     }
     this._transitionEngine.registerTrigger(namespaceId, name, trigger);
@@ -66,8 +82,8 @@ export class AnimationEngine {
     this._transitionEngine.insertNode(namespaceId, element, parent, insertBefore);
   }
 
-  onRemove(namespaceId: string, element: any, context: any, isHostElement?: boolean): void {
-    this._transitionEngine.removeNode(namespaceId, element, isHostElement || false, context);
+  onRemove(namespaceId: string, element: any, context: any): void {
+    this._transitionEngine.removeNode(namespaceId, element, context);
   }
 
   disableAnimations(element: any, disable: boolean) {
@@ -85,8 +101,12 @@ export class AnimationEngine {
   }
 
   listen(
-      namespaceId: string, element: any, eventName: string, eventPhase: string,
-      callback: (event: any) => any): () => any {
+    namespaceId: string,
+    element: any,
+    eventName: string,
+    eventPhase: string,
+    callback: (event: any) => any,
+  ): () => any {
     // @@listen
     if (eventName.charAt(0) == '@') {
       const [id, action] = parseTimelineCommand(eventName);
@@ -100,11 +120,14 @@ export class AnimationEngine {
   }
 
   get players(): AnimationPlayer[] {
-    return (this._transitionEngine.players as AnimationPlayer[])
-        .concat(this._timelineEngine.players as AnimationPlayer[]);
+    return [...this._transitionEngine.players, ...this._timelineEngine.players];
   }
 
   whenRenderingDone(): Promise<any> {
     return this._transitionEngine.whenRenderingDone();
+  }
+
+  afterFlushAnimationsDone(cb: VoidFunction): void {
+    this._transitionEngine.afterFlushAnimationsDone(cb);
   }
 }

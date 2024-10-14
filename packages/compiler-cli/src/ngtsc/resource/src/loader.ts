@@ -3,16 +3,20 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import * as ts from 'typescript';
+import ts from 'typescript';
 
-import {ResourceLoader} from '../../annotations';
-import {NgCompilerAdapter} from '../../core/api';
+import {ResourceLoader, ResourceLoaderContext} from '../../annotations';
+import {NgCompilerAdapter, ResourceHostContext} from '../../core/api';
 import {AbsoluteFsPath, join, PathSegment} from '../../file_system';
+import {RequiredDelegations} from '../../util/src/typescript';
 
 const CSS_PREPROCESSOR_EXT = /(\.scss|\.sass|\.less|\.styl)$/;
+
+const RESOURCE_MARKER = '.$ngresource$';
+const RESOURCE_MARKER_TS = RESOURCE_MARKER + '.ts';
 
 /**
  * `ResourceLoader` which delegates to an `NgCompilerAdapter`'s resource loading methods.
@@ -20,10 +24,19 @@ const CSS_PREPROCESSOR_EXT = /(\.scss|\.sass|\.less|\.styl)$/;
 export class AdapterResourceLoader implements ResourceLoader {
   private cache = new Map<string, string>();
   private fetching = new Map<string, Promise<void>>();
+  private lookupResolutionHost: RequiredDelegations<ts.ModuleResolutionHost>;
 
-  canPreload = !!this.adapter.readResource;
+  canPreload: boolean;
+  canPreprocess: boolean;
 
-  constructor(private adapter: NgCompilerAdapter, private options: ts.CompilerOptions) {}
+  constructor(
+    private adapter: NgCompilerAdapter,
+    private options: ts.CompilerOptions,
+  ) {
+    this.lookupResolutionHost = createLookupResolutionHost(this.adapter);
+    this.canPreload = !!this.adapter.readResource;
+    this.canPreprocess = !!this.adapter.transformResource;
+  }
 
   /**
    * Resolve the url of a resource relative to the file that contains the reference to it.
@@ -38,9 +51,13 @@ export class AdapterResourceLoader implements ResourceLoader {
    * @throws An error if the resource cannot be resolved.
    */
   resolve(url: string, fromFile: string): string {
-    let resolvedUrl: string|null = null;
+    let resolvedUrl: string | null = null;
     if (this.adapter.resourceNameToFileName) {
-      resolvedUrl = this.adapter.resourceNameToFileName(url, fromFile);
+      resolvedUrl = this.adapter.resourceNameToFileName(
+        url,
+        fromFile,
+        (url: string, fromFile: string) => this.fallbackResolve(url, fromFile),
+      );
     } else {
       resolvedUrl = this.fallbackResolve(url, fromFile);
     }
@@ -57,14 +74,16 @@ export class AdapterResourceLoader implements ResourceLoader {
    * `load()` method.
    *
    * @param resolvedUrl The url (resolved by a call to `resolve()`) of the resource to preload.
+   * @param context Information about the resource such as the type and containing file.
    * @returns A Promise that is resolved once the resource has been loaded or `undefined` if the
    * file has already been loaded.
    * @throws An Error if pre-loading is not available.
    */
-  preload(resolvedUrl: string): Promise<void>|undefined {
+  preload(resolvedUrl: string, context: ResourceLoaderContext): Promise<void> | undefined {
     if (!this.adapter.readResource) {
       throw new Error(
-          'HostResourceLoader: the CompilerHost provided does not support pre-loading resources.');
+        'HostResourceLoader: the CompilerHost provided does not support pre-loading resources.',
+      );
     }
     if (this.cache.has(resolvedUrl)) {
       return undefined;
@@ -72,18 +91,59 @@ export class AdapterResourceLoader implements ResourceLoader {
       return this.fetching.get(resolvedUrl);
     }
 
-    const result = this.adapter.readResource(resolvedUrl);
+    let result = this.adapter.readResource(resolvedUrl);
+
+    if (this.adapter.transformResource && context.type === 'style') {
+      const resourceContext: ResourceHostContext = {
+        type: 'style',
+        containingFile: context.containingFile,
+        resourceFile: resolvedUrl,
+        className: context.className,
+      };
+      result = Promise.resolve(result).then(async (str) => {
+        const transformResult = await this.adapter.transformResource!(str, resourceContext);
+        return transformResult === null ? str : transformResult.content;
+      });
+    }
+
     if (typeof result === 'string') {
       this.cache.set(resolvedUrl, result);
       return undefined;
     } else {
-      const fetchCompletion = result.then(str => {
+      const fetchCompletion = result.then((str) => {
         this.fetching.delete(resolvedUrl);
         this.cache.set(resolvedUrl, str);
       });
       this.fetching.set(resolvedUrl, fetchCompletion);
       return fetchCompletion;
     }
+  }
+
+  /**
+   * Preprocess the content data of an inline resource, asynchronously.
+   *
+   * @param data The existing content data from the inline resource.
+   * @param context Information regarding the resource such as the type and containing file.
+   * @returns A Promise that resolves to the processed data. If no processing occurs, the
+   * same data string that was passed to the function will be resolved.
+   */
+  async preprocessInline(data: string, context: ResourceLoaderContext): Promise<string> {
+    if (!this.adapter.transformResource || context.type !== 'style') {
+      return data;
+    }
+
+    const transformResult = await this.adapter.transformResource(data, {
+      type: 'style',
+      containingFile: context.containingFile,
+      resourceFile: null,
+      order: context.order,
+      className: context.className,
+    });
+    if (transformResult === null) {
+      return data;
+    }
+
+    return transformResult.content;
   }
 
   /**
@@ -99,8 +159,9 @@ export class AdapterResourceLoader implements ResourceLoader {
       return this.cache.get(resolvedUrl)!;
     }
 
-    const result = this.adapter.readResource ? this.adapter.readResource(resolvedUrl) :
-                                               this.adapter.readFile(resolvedUrl);
+    const result = this.adapter.readResource
+      ? this.adapter.readResource(resolvedUrl)
+      : this.adapter.readFile(resolvedUrl);
     if (typeof result !== 'string') {
       throw new Error(`HostResourceLoader: loader(${resolvedUrl}) returned a Promise`);
     }
@@ -109,10 +170,17 @@ export class AdapterResourceLoader implements ResourceLoader {
   }
 
   /**
+   * Invalidate the entire resource cache.
+   */
+  invalidate(): void {
+    this.cache.clear();
+  }
+
+  /**
    * Attempt to resolve `url` in the context of `fromFile`, while respecting the rootDirs
    * option from the tsconfig. First, normalize the file name.
    */
-  private fallbackResolve(url: string, fromFile: string): string|null {
+  private fallbackResolve(url: string, fromFile: string): string | null {
     let candidateLocations: string[];
     if (url.startsWith('/')) {
       // This path is not really an absolute path, but instead the leading '/' means that it's
@@ -149,7 +217,7 @@ export class AdapterResourceLoader implements ResourceLoader {
   private getRootedCandidateLocations(url: string): AbsoluteFsPath[] {
     // The path already starts with '/', so add a '.' to make it relative.
     const segment: PathSegment = ('.' + url) as PathSegment;
-    return this.adapter.rootDirs.map(rootDir => join(rootDir, segment));
+    return this.adapter.rootDirs.map((rootDir) => join(rootDir, segment));
   }
 
   /**
@@ -163,20 +231,63 @@ export class AdapterResourceLoader implements ResourceLoader {
     // `failedLookupLocations` is in the name of the type ts.ResolvedModuleWithFailedLookupLocations
     // but is marked @internal in TypeScript. See
     // https://github.com/Microsoft/TypeScript/issues/28770.
-    type ResolvedModuleWithFailedLookupLocations =
-        ts.ResolvedModuleWithFailedLookupLocations&{failedLookupLocations: ReadonlyArray<string>};
+    type ResolvedModuleWithFailedLookupLocations = ts.ResolvedModuleWithFailedLookupLocations & {
+      failedLookupLocations: ReadonlyArray<string>;
+    };
 
-    // clang-format off
-    const failedLookup = ts.resolveModuleName(url + '.$ngresource$', fromFile, this.options, this.adapter) as ResolvedModuleWithFailedLookupLocations;
-    // clang-format on
+    const failedLookup = ts.resolveModuleName(
+      url + RESOURCE_MARKER,
+      fromFile,
+      this.options,
+      this.lookupResolutionHost,
+    ) as ResolvedModuleWithFailedLookupLocations;
+
     if (failedLookup.failedLookupLocations === undefined) {
       throw new Error(
-          `Internal error: expected to find failedLookupLocations during resolution of resource '${
-              url}' in context of ${fromFile}`);
+        `Internal error: expected to find failedLookupLocations during resolution of resource '${url}' in context of ${fromFile}`,
+      );
     }
 
     return failedLookup.failedLookupLocations
-        .filter(candidate => candidate.endsWith('.$ngresource$.ts'))
-        .map(candidate => candidate.replace(/\.\$ngresource\$\.ts$/, ''));
+      .filter((candidate) => candidate.endsWith(RESOURCE_MARKER_TS))
+      .map((candidate) => candidate.slice(0, -RESOURCE_MARKER_TS.length));
   }
+}
+
+/**
+ * Derives a `ts.ModuleResolutionHost` from a compiler adapter that recognizes the special resource
+ * marker and does not go to the filesystem for these requests, as they are known not to exist.
+ */
+function createLookupResolutionHost(
+  adapter: NgCompilerAdapter,
+): RequiredDelegations<ts.ModuleResolutionHost> {
+  return {
+    directoryExists(directoryName: string): boolean {
+      if (directoryName.includes(RESOURCE_MARKER)) {
+        return false;
+      } else if (adapter.directoryExists !== undefined) {
+        return adapter.directoryExists(directoryName);
+      } else {
+        // TypeScript's module resolution logic assumes that the directory exists when no host
+        // implementation is available.
+        return true;
+      }
+    },
+    fileExists(fileName: string): boolean {
+      if (fileName.includes(RESOURCE_MARKER)) {
+        return false;
+      } else {
+        return adapter.fileExists(fileName);
+      }
+    },
+    readFile: adapter.readFile.bind(adapter),
+    getCurrentDirectory: adapter.getCurrentDirectory.bind(adapter),
+    getDirectories: adapter.getDirectories?.bind(adapter),
+    realpath: adapter.realpath?.bind(adapter),
+    trace: adapter.trace?.bind(adapter),
+    useCaseSensitiveFileNames:
+      typeof adapter.useCaseSensitiveFileNames === 'function'
+        ? adapter.useCaseSensitiveFileNames.bind(adapter)
+        : adapter.useCaseSensitiveFileNames,
+  };
 }

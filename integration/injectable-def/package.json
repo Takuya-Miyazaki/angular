@@ -12,17 +12,18 @@
     "@angular/platform-browser-dynamic": "file:../../dist/packages-dist/platform-browser-dynamic",
     "@angular/platform-server": "file:../../dist/packages-dist/platform-server",
     "@types/node": "file:../../node_modules/@types/node",
-    "rxjs": "file:../../node_modules/rxjs",
+    "rxjs": "^7.3.0",
     "typescript": "file:../../node_modules/typescript",
-    "zone.js": "file:../../dist/zone.js-dist/zone.js"
+    "zone.js": "file:../../dist/zone.js-dist/archive/zone.js.tgz"
   },
   "devDependencies": {
     "@types/jasmine": "file:../../node_modules/@types/jasmine",
     "concurrently": "3.4.0",
     "lite-server": "2.2.2",
-    "protractor": "file:../../node_modules/protractor"
+    "protractor": "file:../../node_modules/protractor",
+    "rollup": "file:../../node_modules/rollup"
   },
   "scripts": {
-    "test": "./test.sh"
+    "test": "./run_test.sh"
   }
 }

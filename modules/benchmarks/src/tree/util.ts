@@ -3,7 +3,7 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {getIntParameter} from '../util';
@@ -13,9 +13,13 @@ export class TreeNode {
   children: TreeNode[];
 
   constructor(
-      public value: string, public depth: number, public maxDepth: number,
-      public left: TreeNode|null, public right: TreeNode|null) {
-    this.transitiveChildCount = Math.pow(2, (this.maxDepth - this.depth + 1)) - 1;
+    public value: string,
+    public depth: number,
+    public maxDepth: number,
+    public left: TreeNode | null,
+    public right: TreeNode | null,
+  ) {
+    this.transitiveChildCount = Math.pow(2, this.maxDepth - this.depth + 1) - 1;
     this.children = this.left ? [this.left, this.right!] : [];
   }
 
@@ -35,9 +39,7 @@ export function getMaxDepth() {
   return maxDepth;
 }
 
-init();
-
-function init() {
+export function initTreeUtils() {
   maxDepth = getIntParameter('depth');
   treeCreateCount = 0;
   numberData = _buildTree(0, numberValues);

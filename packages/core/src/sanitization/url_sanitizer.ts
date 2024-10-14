@@ -3,19 +3,20 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {isDevMode} from '../util/is_dev_mode';
+import {XSS_SECURITY_URL} from '../error_details_base_url';
 
 /**
- * A pattern that recognizes a commonly useful subset of URLs that are safe.
+ * A pattern that recognizes URLs that are safe wrt. XSS in URL navigation
+ * contexts.
  *
  * This regular expression matches a subset of URLs that will not cause script
  * execution if used in URL context within a HTML document. Specifically, this
- * regular expression matches if (comment from here on and regex copied from
- * Soy's EscapingConventions):
- * (1) Either an allowed protocol (http, https, mailto or ftp).
+ * regular expression matches if:
+ * (1) Either a protocol that is not javascript:, and that has valid characters
+ *     (alphanumeric or [+-.]).
  * (2) or no protocol.  A protocol must be followed by a colon. The below
  *     allows that by allowing colons only after one of the characters [/?#].
  *     A colon after a hash (#) must be in the fragment.
@@ -34,27 +35,14 @@ import {isDevMode} from '../util/is_dev_mode';
  *
  * This regular expression was taken from the Closure sanitization library.
  */
-const SAFE_URL_PATTERN = /^(?:(?:https?|mailto|ftp|tel|file|sms):|[^&:/?#]*(?:[/?#]|$))/gi;
-
-/* A pattern that matches safe srcset values */
-const SAFE_SRCSET_PATTERN = /^(?:(?:https?|file):|[^&:/?#]*(?:[/?#]|$))/gi;
-
-/** A pattern that matches safe data URLs. Only matches image, video and audio types. */
-const DATA_URL_PATTERN =
-    /^data:(?:image\/(?:bmp|gif|jpeg|jpg|png|tiff|webp)|video\/(?:mpeg|mp4|ogg|webm)|audio\/(?:mp3|oga|ogg|opus));base64,[a-z0-9+\/]+=*$/i;
-
+const SAFE_URL_PATTERN = /^(?!javascript:)(?:[a-z0-9+.-]+:|[^&:\/?#]*(?:[\/?#]|$))/i;
 export function _sanitizeUrl(url: string): string {
   url = String(url);
-  if (url.match(SAFE_URL_PATTERN) || url.match(DATA_URL_PATTERN)) return url;
+  if (url.match(SAFE_URL_PATTERN)) return url;
 
-  if (isDevMode()) {
-    console.warn(`WARNING: sanitizing unsafe URL value ${url} (see http://g.co/ng/security#xss)`);
+  if (typeof ngDevMode === 'undefined' || ngDevMode) {
+    console.warn(`WARNING: sanitizing unsafe URL value ${url} (see ${XSS_SECURITY_URL})`);
   }
 
   return 'unsafe:' + url;
-}
-
-export function sanitizeSrcset(srcset: string): string {
-  srcset = String(srcset);
-  return srcset.split(',').map((srcset) => _sanitizeUrl(srcset.trim())).join(', ');
 }

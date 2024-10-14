@@ -3,10 +3,10 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {ComponentRef} from '@angular/core';
+import {ComponentRef, inject, Injectable} from '@angular/core';
 
 import {OutletContext} from './router_outlet_context';
 import {ActivatedRoute, ActivatedRouteSnapshot} from './router_state';
@@ -26,9 +26,9 @@ export type DetachedRouteHandle = {};
 
 /** @internal */
 export type DetachedRouteHandleInternal = {
-  contexts: Map<string, OutletContext>,
-  componentRef: ComponentRef<any>,
-  route: TreeNode<ActivatedRoute>,
+  contexts: Map<string, OutletContext>;
+  componentRef: ComponentRef<any>;
+  route: TreeNode<ActivatedRoute>;
 };
 
 /**
@@ -38,6 +38,7 @@ export type DetachedRouteHandleInternal = {
  *
  * @publicApi
  */
+@Injectable({providedIn: 'root', useFactory: () => inject(DefaultRouteReuseStrategy)})
 export abstract class RouteReuseStrategy {
   /** Determines if this route (and its subtree) should be detached to be reused later */
   abstract shouldDetach(route: ActivatedRouteSnapshot): boolean;
@@ -47,13 +48,13 @@ export abstract class RouteReuseStrategy {
    *
    * Storing a `null` value should erase the previously stored value.
    */
-  abstract store(route: ActivatedRouteSnapshot, handle: DetachedRouteHandle|null): void;
+  abstract store(route: ActivatedRouteSnapshot, handle: DetachedRouteHandle | null): void;
 
   /** Determines if this route (and its subtree) should be reattached */
   abstract shouldAttach(route: ActivatedRouteSnapshot): boolean;
 
   /** Retrieves the previously stored route */
-  abstract retrieve(route: ActivatedRouteSnapshot): DetachedRouteHandle|null;
+  abstract retrieve(route: ActivatedRouteSnapshot): DetachedRouteHandle | null;
 
   /** Determines if a route should be reused */
   abstract shouldReuseRoute(future: ActivatedRouteSnapshot, curr: ActivatedRouteSnapshot): boolean;
@@ -64,7 +65,7 @@ export abstract class RouteReuseStrategy {
  *
  * This base route reuse strategy only reuses routes when the matched router configs are
  * identical. This prevents components from being destroyed and recreated
- * when just the fragment or query parameters change
+ * when just the route parameters, query parameters or fragment change
  * (that is, the existing component is _reused_).
  *
  * This strategy does not store any routes for later reuse.
@@ -96,7 +97,7 @@ export abstract class BaseRouteReuseStrategy implements RouteReuseStrategy {
   }
 
   /** Returns `null` because this strategy does not store routes for later re-use. */
-  retrieve(route: ActivatedRouteSnapshot): DetachedRouteHandle|null {
+  retrieve(route: ActivatedRouteSnapshot): DetachedRouteHandle | null {
     return null;
   }
 
@@ -110,4 +111,5 @@ export abstract class BaseRouteReuseStrategy implements RouteReuseStrategy {
   }
 }
 
+@Injectable({providedIn: 'root'})
 export class DefaultRouteReuseStrategy extends BaseRouteReuseStrategy {}

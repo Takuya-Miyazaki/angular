@@ -3,10 +3,10 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import * as ts from 'typescript';
+import ts from 'typescript';
 
 import {absoluteFromSourceFile} from '../../file_system';
 import {isNonDeclarationTsPath} from '../../util/src/typescript';
@@ -36,15 +36,20 @@ export class ShimReferenceTagger {
   private enabled: boolean = true;
 
   constructor(shimExtensions: string[]) {
-    this.suffixes = shimExtensions.map(extension => `.${extension}.ts`);
+    this.suffixes = shimExtensions.map((extension) => `.${extension}.ts`);
   }
 
   /**
    * Tag `sf` with any needed references if it's not a shim itself.
    */
   tag(sf: ts.SourceFile): void {
-    if (!this.enabled || sf.isDeclarationFile || isShim(sf) || this.tagged.has(sf) ||
-        !isNonDeclarationTsPath(sf.fileName)) {
+    if (
+      !this.enabled ||
+      sf.isDeclarationFile ||
+      isShim(sf) ||
+      this.tagged.has(sf) ||
+      !isNonDeclarationTsPath(sf.fileName)
+    ) {
       return;
     }
 
@@ -57,7 +62,6 @@ export class ShimReferenceTagger {
     }
 
     const referencedFiles = [...ext.originalReferencedFiles];
-
 
     const sfPath = absoluteFromSourceFile(sf);
     for (const suffix of this.suffixes) {

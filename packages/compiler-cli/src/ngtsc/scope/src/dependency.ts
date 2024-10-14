@@ -3,10 +3,10 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import * as ts from 'typescript';
+import ts from 'typescript';
 
 import {AliasingHost, Reference} from '../../imports';
 import {DirectiveMeta, MetadataReader, PipeMeta} from '../../metadata';
@@ -15,7 +15,7 @@ import {ClassDeclaration} from '../../reflection';
 import {ExportScope} from './api';
 
 export interface DtsModuleScopeResolver {
-  resolve(ref: Reference<ClassDeclaration>): ExportScope|null;
+  resolve(ref: Reference<ClassDeclaration>): ExportScope | null;
 }
 
 /**
@@ -29,26 +29,30 @@ export class MetadataDtsModuleScopeResolver implements DtsModuleScopeResolver {
   /**
    * Cache which holds fully resolved scopes for NgModule classes from .d.ts files.
    */
-  private cache = new Map<ClassDeclaration, ExportScope|null>();
+  private cache = new Map<ClassDeclaration, ExportScope | null>();
 
   /**
    * @param dtsMetaReader a `MetadataReader` which can read metadata from `.d.ts` files.
    */
-  constructor(private dtsMetaReader: MetadataReader, private aliasingHost: AliasingHost|null) {}
+  constructor(
+    private dtsMetaReader: MetadataReader,
+    private aliasingHost: AliasingHost | null,
+  ) {}
 
   /**
    * Resolve a `Reference`'d NgModule from a .d.ts file and produce a transitive `ExportScope`
    * listing the directives and pipes which that NgModule exports to others.
    *
-   * This operation relies on a `Reference` instead of a direct TypeScrpt node as the `Reference`s
+   * This operation relies on a `Reference` instead of a direct TypeScript node as the `Reference`s
    * produced depend on how the original NgModule was imported.
    */
-  resolve(ref: Reference<ClassDeclaration>): ExportScope|null {
+  resolve(ref: Reference<ClassDeclaration>): ExportScope | null {
     const clazz = ref.node;
     const sourceFile = clazz.getSourceFile();
     if (!sourceFile.isDeclarationFile) {
-      throw new Error(`Debug error: DtsModuleScopeResolver.read(${ref.debugName} from ${
-          sourceFile.fileName}), but not a .d.ts file`);
+      throw new Error(
+        `Debug error: DtsModuleScopeResolver.read(${ref.debugName} from ${sourceFile.fileName}), but not a .d.ts file`,
+      );
     }
 
     if (this.cache.has(clazz)) {
@@ -56,9 +60,7 @@ export class MetadataDtsModuleScopeResolver implements DtsModuleScopeResolver {
     }
 
     // Build up the export scope - those directives and pipes made visible by this module.
-    const directives: DirectiveMeta[] = [];
-    const pipes: PipeMeta[] = [];
-    const ngModules = new Set<ClassDeclaration>([clazz]);
+    const dependencies: Array<DirectiveMeta | PipeMeta> = [];
 
     const meta = this.dtsMetaReader.getNgModuleMetadata(ref);
     if (meta === null) {
@@ -78,7 +80,7 @@ export class MetadataDtsModuleScopeResolver implements DtsModuleScopeResolver {
       const directive = this.dtsMetaReader.getDirectiveMetadata(exportRef);
       if (directive !== null) {
         const isReExport = !declarations.has(exportRef.node);
-        directives.push(this.maybeAlias(directive, sourceFile, isReExport));
+        dependencies.push(this.maybeAlias(directive, sourceFile, isReExport));
         continue;
       }
 
@@ -86,7 +88,7 @@ export class MetadataDtsModuleScopeResolver implements DtsModuleScopeResolver {
       const pipe = this.dtsMetaReader.getPipeMetadata(exportRef);
       if (pipe !== null) {
         const isReExport = !declarations.has(exportRef.node);
-        pipes.push(this.maybeAlias(pipe, sourceFile, isReExport));
+        dependencies.push(this.maybeAlias(pipe, sourceFile, isReExport));
         continue;
       }
 
@@ -98,8 +100,7 @@ export class MetadataDtsModuleScopeResolver implements DtsModuleScopeResolver {
         // required.
         if (this.aliasingHost === null) {
           // Fast path when aliases aren't required.
-          directives.push(...exportScope.exported.directives);
-          pipes.push(...exportScope.exported.pipes);
+          dependencies.push(...exportScope.exported.dependencies);
         } else {
           // It's necessary to rewrite the `Reference`s to add alias expressions. This way, imports
           // generated to these directives and pipes will use a shallow import to `sourceFile`
@@ -109,14 +110,8 @@ export class MetadataDtsModuleScopeResolver implements DtsModuleScopeResolver {
           // source file as the re-exporting NgModule. This can happen if both a directive, its
           // NgModule, and the re-exporting NgModule are all in the same file. In this case,
           // no import alias is needed as it would go to the same file anyway.
-          for (const directive of exportScope.exported.directives) {
-            directives.push(this.maybeAlias(directive, sourceFile, /* isReExport */ true));
-          }
-          for (const pipe of exportScope.exported.pipes) {
-            pipes.push(this.maybeAlias(pipe, sourceFile, /* isReExport */ true));
-          }
-          for (const ngModule of exportScope.exported.ngModules) {
-            ngModules.add(ngModule);
+          for (const dep of exportScope.exported.dependencies) {
+            dependencies.push(this.maybeAlias(dep, sourceFile, /* isReExport */ true));
           }
         }
       }
@@ -124,22 +119,23 @@ export class MetadataDtsModuleScopeResolver implements DtsModuleScopeResolver {
 
       // The export was not a directive, a pipe, or a module. This is an error.
       // TODO(alxhub): produce a ts.Diagnostic
-      throw new Error(`Exported value ${exportRef.debugName} was not a directive, pipe, or module`);
     }
 
     const exportScope: ExportScope = {
       exported: {
-        directives,
-        pipes,
-        ngModules: Array.from(ngModules),
+        dependencies,
+        isPoisoned: false,
       },
     };
     this.cache.set(clazz, exportScope);
     return exportScope;
   }
 
-  private maybeAlias<T extends DirectiveMeta|PipeMeta>(
-      dirOrPipe: T, maybeAliasFrom: ts.SourceFile, isReExport: boolean): T {
+  private maybeAlias<T extends DirectiveMeta | PipeMeta>(
+    dirOrPipe: T,
+    maybeAliasFrom: ts.SourceFile,
+    isReExport: boolean,
+  ): T {
     const ref = dirOrPipe.ref;
     if (this.aliasingHost === null || ref.node.getSourceFile() === maybeAliasFrom) {
       return dirOrPipe;

@@ -11,16 +11,61 @@ Implements _Zones_ for JavaScript, inspired by [Dart](https://dart.dev/articles/
 > * 'async-listener' as it patches global.setTimeout, global.setInterval before zone.js does
 > * 'continuation-local-storage' as it uses async-listener
 
-# NEW Zone.js POST-v0.6.0
+## Development Status of Zone.js
+
+As Angular moves towards a zoneless application development model, Zone.js is no longer accepting new features, including additional patches for native platform APIs. The team will also not be accepting any low priority bug fixes. Any critical bug fixes that relate to Angular's direct use of Zone.js will still be accepted.
+
+While still a supported part of Angular, the Angular team strongly discourages using Zone.js outside of Angular application contexts.
+
+
+## NEW Zone.js POST-v0.6.0
 
 See the new API [here](./lib/zone.ts).
 
 Read up on [Zone Primer](https://docs.google.com/document/d/1F5Ug0jcrm031vhSMJEOgp1l-Is-Vf0UCNDY-LsQtAIY).
 
+## BREAKING CHANGES since Zone.js v0.11.1
+
+Prior to `v0.11.1`, Zone.js provided two distribution bundle formats in the `dist` folder.
+They were (1) `ES5` bundle distributed as `zone.js` and (2) `ES2015` bundle distributed as `zone-evergreen.js`.
+Both of these bundles were in `UMD` format, and are used for Angular's differential-loading mechanism.
+
+Starting with `v0.11.1`, Zone.js follows the [Angular Package Format](https://docs.google.com/document/d/1CZC2rcpxffTDfRDs6p1cfbmKNLA6x5O-NtkJglDaBVs). Therefor the new Zone.js file layout is:
+
+- `bundles`: `ES5` bundle in `UMD` format.
+- `fesm2015`: `ES5` bundle in `ESM` format.
+- `dist`: `ES5` bundle in `UMD` format. This directory is present to keep backward compatibility.
+
+If you are using `Angular CLI`, the `polyfills.ts` file will contain:
+
+```
+import 'zone.js/dist/zone';
+```
+
+Starting with Zone.js `v0.11.1+` the import changes to:
+
+```
+import 'zone.js';
+```
+
+Prior to `v0.11.1` the import would load the `ES5` bundle in `UMD` format from `dist/zone.js`. 
+Starting with `v0.11.1` the import loads the `ES2015` bundle in `ESM` format instead.
+
+This is a breaking change for legacy browsers such as `IE11`.
+
+For backwards compatibility `zone.js` continues to distribute the same bundles under `dist`.
+To restore the old behavior import from the `dist` directory instead like so:
+
+```
+import 'zone.js/dist/zone';
+```
+
+For details, please refer the [changelog](./CHANGELOG.md) and the [PR](https://github.com/angular/angular/pull/36540).
+
 ## What's a Zone?
 
 A Zone is an execution context that persists across async tasks.
-You can think of it as [thread-local storage](http://en.wikipedia.org/wiki/Thread-local_storage) for JavaScript VMs.
+You can think of it as [thread-local storage](https://en.wikipedia.org/wiki/Thread-local_storage) for JavaScript VMs.
 
 See this video from ng-conf 2014 for a detailed explanation:
 
@@ -28,7 +73,7 @@ See this video from ng-conf 2014 for a detailed explanation:
 
 ## See also
 * [async-listener](https://github.com/othiym23/async-listener) - a similar library for node
-* [Async stack traces in Chrome](http://www.html5rocks.com/en/tutorials/developertools/async-call-stack/)
+* [Async stack traces in Chrome](https://www.html5rocks.com/en/tutorials/developertools/async-call-stack/)
 * [strongloop/zone](https://github.com/strongloop/zone) (Deprecated)
 * [vizone](https://github.com/gilbox/vizone) - control flow visualizer that uses zone.js
 
@@ -95,9 +140,6 @@ import 'zone.js/plugins/zone-patch-canvas';
 |`zone-patch-socket-io.js`|patch for `socket-io`|
 |`zone-patch-user-media.js`|patch for `UserMedia API`|
 |`zone-patch-message-port.js`|patch for `MessagePort API`|
-
-## Promise A+ test passed
-[![Promises/A+ 1.1 compliant](https://promisesaplus.com/assets/logo-small.png)](https://promisesaplus.com/)
 
 ## License
 MIT

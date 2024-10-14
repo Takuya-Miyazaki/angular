@@ -3,7 +3,7 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {ifEnvSupports} from './test-util';
@@ -22,9 +22,9 @@ ifEnvSupports(supportJasmineSpec, () => {
 
   describe('jasmine', () => {
     let throwOnAsync = false;
-    let beforeEachZone: Zone|null = null;
-    let beforeAllZone: Zone|null = null;
-    let itZone: Zone|null = null;
+    let beforeEachZone: Zone | null = null;
+    let beforeAllZone: Zone | null = null;
+    let itZone: Zone | null = null;
     const syncZone = Zone.current;
     try {
       Zone.current.scheduleMicroTask('dontallow', (): any => null);
@@ -32,13 +32,13 @@ ifEnvSupports(supportJasmineSpec, () => {
       throwOnAsync = true;
     }
 
-    beforeAll(() => beforeAllZone = Zone.current);
+    beforeAll(() => (beforeAllZone = Zone.current));
 
-    beforeEach(() => beforeEachZone = Zone.current);
+    beforeEach(() => (beforeEachZone = Zone.current));
 
     it('should throw on async in describe', () => {
       expect(throwOnAsync).toBe(true);
-      expect(syncZone.name).toEqual('syncTestZone for jasmine.describe');
+      expect(syncZone.name).toEqual('syncTestZone for jasmine.describe#jasmine');
       itZone = Zone.current;
     });
 
@@ -65,7 +65,7 @@ ifEnvSupports(supportJasmineSpec, () => {
     });
 
     it('should wait for promise to resolve', () => {
-      return new Promise((res, _) => {
+      return new Promise<void>((res, _) => {
         setTimeout(() => {
           log.push('resolved');
           res();

@@ -3,30 +3,25 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {DOCUMENT, ɵgetDOM as getDOM} from '@angular/common';
 import {Inject, Injectable} from '@angular/core';
+import {EventManagerPlugin} from '@angular/platform-browser';
 
 @Injectable()
-export class ServerEventManagerPlugin /* extends EventManagerPlugin which is private */ {
-  constructor(@Inject(DOCUMENT) private doc: any) {}
+export class ServerEventManagerPlugin extends EventManagerPlugin {
+  constructor(@Inject(DOCUMENT) private doc: any) {
+    super(doc);
+  }
 
   // Handle all events on the server.
-  supports(eventName: string) {
+  override supports(eventName: string) {
     return true;
   }
 
-  addEventListener(element: HTMLElement, eventName: string, handler: Function): Function {
+  override addEventListener(element: HTMLElement, eventName: string, handler: Function): Function {
     return getDOM().onAndCancel(element, eventName, handler);
-  }
-
-  addGlobalEventListener(element: string, eventName: string, handler: Function): Function {
-    const target: HTMLElement = getDOM().getGlobalEventTarget(this.doc, element);
-    if (!target) {
-      throw new Error(`Unsupported event target ${target} for event ${eventName}`);
-    }
-    return this.addEventListener(target, eventName, handler);
   }
 }

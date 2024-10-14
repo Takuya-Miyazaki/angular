@@ -3,19 +3,16 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {Directive, OnDestroy, OnInit} from '@angular/core';
 
-import {FormGroup} from '../model';
+import {FormGroup} from '../model/form_group';
 
 import {ControlContainer} from './control_container';
-import {Form} from './form_interface';
-import {composeAsyncValidators, composeValidators, controlPath} from './shared';
-import {AsyncValidatorFn, ValidatorFn} from './validators';
-
-
+import type {Form} from './form_interface';
+import {controlPath} from './shared';
 
 /**
  * @description
@@ -23,7 +20,9 @@ import {AsyncValidatorFn, ValidatorFn} from './validators';
  *
  * @publicApi
  */
-@Directive()
+@Directive({
+  standalone: false,
+})
 export class AbstractFormGroupDirective extends ControlContainer implements OnInit, OnDestroy {
   /**
    * @description
@@ -33,24 +32,6 @@ export class AbstractFormGroupDirective extends ControlContainer implements OnIn
    */
   // TODO(issue/24571): remove '!'.
   _parent!: ControlContainer;
-
-  /**
-   * @description
-   * An array of synchronous validators for the group
-   *
-   * @internal
-   */
-  // TODO(issue/24571): remove '!'.
-  _validators!: any[];
-
-  /**
-   * @description
-   * An array of async validators for the group
-   *
-   * @internal
-   */
-  // TODO(issue/24571): remove '!'.
-  _asyncValidators!: any[];
 
   /** @nodoc */
   ngOnInit(): void {
@@ -71,7 +52,7 @@ export class AbstractFormGroupDirective extends ControlContainer implements OnIn
    * @description
    * The `FormGroup` bound to this directive.
    */
-  get control(): FormGroup {
+  override get control(): FormGroup {
     return this.formDirective!.getFormGroup(this);
   }
 
@@ -79,7 +60,7 @@ export class AbstractFormGroupDirective extends ControlContainer implements OnIn
    * @description
    * The path to this group from the top-level directive.
    */
-  get path(): string[] {
+  override get path(): string[] {
     return controlPath(this.name == null ? this.name : this.name.toString(), this._parent);
   }
 
@@ -87,24 +68,8 @@ export class AbstractFormGroupDirective extends ControlContainer implements OnIn
    * @description
    * The top-level directive for this group if present, otherwise null.
    */
-  get formDirective(): Form|null {
+  override get formDirective(): Form | null {
     return this._parent ? this._parent.formDirective : null;
-  }
-
-  /**
-   * @description
-   * The synchronous validators registered with this group.
-   */
-  get validator(): ValidatorFn|null {
-    return composeValidators(this._validators);
-  }
-
-  /**
-   * @description
-   * The async validators registered with this group.
-   */
-  get asyncValidator(): AsyncValidatorFn|null {
-    return composeAsyncValidators(this._asyncValidators);
   }
 
   /** @internal */

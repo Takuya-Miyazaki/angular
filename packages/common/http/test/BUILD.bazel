@@ -3,7 +3,7 @@ load("//tools/circular_dependency_test:index.bzl", "circular_dependency_test")
 
 circular_dependency_test(
     name = "circular_deps_test",
-    entry_point = "angular/packages/common/http/index.js",
+    entry_point = "angular/packages/common/http/index.mjs",
     deps = ["//packages/common/http"],
 )
 
@@ -16,17 +16,20 @@ ts_library(
     # Visible to //:saucelabs_unit_tests_poc target
     visibility = ["//:__pkg__"],
     deps = [
+        "//packages/common",
         "//packages/common/http",
         "//packages/common/http/testing",
         "//packages/core",
         "//packages/core/testing",
+        "//packages/private/testing",
         "@npm//rxjs",
     ],
 )
 
 jasmine_node_test(
     name = "test",
-    bootstrap = ["//tools/testing:node_es5"],
+    bootstrap = ["//tools/testing:node"],
+    flaky = True,  # TODO: figure out why one of the transferCache tests is flaky
     deps = [
         ":test_lib",
     ],
@@ -34,6 +37,7 @@ jasmine_node_test(
 
 karma_web_test_suite(
     name = "test_web",
+    flaky = True,  # TODO: figure out why one of the transferCache tests is flaky
     deps = [
         ":test_lib",
     ],

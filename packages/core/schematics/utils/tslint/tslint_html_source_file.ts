@@ -3,10 +3,10 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import * as ts from 'typescript';
+import ts from 'typescript';
 
 /**
  * Creates a fake TypeScript source file that can contain content of templates or stylesheets.
@@ -23,7 +23,7 @@ export function createHtmlSourceFile(filePath: string, content: string): ts.Sour
   // At the time of writing, TSLint loads files manually if the actual rule source file is not
   // equal to the source file of the replacement. This means that the replacements need proper
   // offsets without the string literal quote symbols.
-  sourceFile.getFullText = function() {
+  sourceFile.getFullText = function () {
     return sourceFile.text.substring(1, sourceFile.text.length - 1);
   };
 

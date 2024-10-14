@@ -121,7 +121,7 @@ Because the first import of an NgModule from a user library to a `.d.ts` is alwa
 Aliasing is currently used in two cases:
 
 1. To address strict dependency checking issues when using a `UnifiedModulesHost`.
-2. To support dependening on non-Angular Package Format packages (e.g. private libraries in monorepos) which do not have an entrypoint file through which all directives/pipes/modules are exported.
+2. To support depending on non-Angular Package Format packages (e.g. private libraries in monorepos) which do not have an entrypoint file through which all directives/pipes/modules are exported.
 
 In environments with "strict dependency checking" as described above, an NgModule which exports another NgModule from one of its dependencies needs to export its directives/pipes as well, in order to make them available to the downstream compiler.
 
@@ -166,8 +166,6 @@ Due to quirks in TypeScript transformers (see below), TypeScript considers the i
 It consists of two mechanisms:
 
 1. A `DefaultImportTracker`, which records information about both default imports encountered in the program as well as usages of those imports added during compilation.
-
-A `DefaultImportRecorder` interface is used to allow for a noop implementation in cases (like ngcc) where this tracking isn't necessary.
 
 2. A TypeScript transformer which processes default import statements and can preserve those which are actually used.
 

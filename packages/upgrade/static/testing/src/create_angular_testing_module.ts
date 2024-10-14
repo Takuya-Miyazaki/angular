@@ -3,23 +3,22 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {Injector, NgModule, Type} from '@angular/core';
+import {ɵangular1 as angular, ɵconstants} from '@angular/upgrade/static';
 
-import * as angular from '../../../src/common/src/angular1';
-import {$INJECTOR, INJECTOR_KEY, UPGRADE_APP_TYPE_KEY} from '../../../src/common/src/constants';
 import {UpgradeAppType} from '../../../src/common/src/util';
 
-let $injector: angular.IInjectorService|null = null;
+let $injector: angular.IInjectorService | null = null;
 let injector: Injector;
 
 export function $injectorFactory() {
   return $injector;
 }
 
-@NgModule({providers: [{provide: $INJECTOR, useFactory: $injectorFactory}]})
+@NgModule({providers: [{provide: ɵconstants.$INJECTOR, useFactory: $injectorFactory}]})
 export class AngularTestingModule {
   constructor(i: Injector) {
     injector = i;
@@ -92,10 +91,13 @@ export class AngularTestingModule {
  * @publicApi
  */
 export function createAngularTestingModule(
-    angularJSModules: string[], strictDi?: boolean): Type<any> {
-  angular.module_('$$angularJSTestingModule', angularJSModules)
-      .constant(UPGRADE_APP_TYPE_KEY, UpgradeAppType.Static)
-      .factory(INJECTOR_KEY, () => injector);
+  angularJSModules: string[],
+  strictDi?: boolean,
+): Type<any> {
+  angular
+    .module_('$$angularJSTestingModule', angularJSModules)
+    .constant(ɵconstants.UPGRADE_APP_TYPE_KEY, UpgradeAppType.Static)
+    .factory(ɵconstants.INJECTOR_KEY, () => injector);
   $injector = angular.injector(['ng', '$$angularJSTestingModule'], strictDi);
   return AngularTestingModule;
 }

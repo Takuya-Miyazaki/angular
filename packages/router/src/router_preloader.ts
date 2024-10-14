@@ -3,18 +3,23 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {Compiler, Injectable, Injector, NgModuleFactoryLoader, NgModuleRef, OnDestroy} from '@angular/core';
+import {
+  Compiler,
+  createEnvironmentInjector,
+  EnvironmentInjector,
+  Injectable,
+  OnDestroy,
+} from '@angular/core';
 import {from, Observable, of, Subscription} from 'rxjs';
-import {catchError, concatMap, filter, map, mergeAll, mergeMap} from 'rxjs/operators';
+import {catchError, concatMap, filter, mergeAll, mergeMap} from 'rxjs/operators';
 
-import {LoadedRouterConfig, Route, Routes} from './config';
-import {Event, NavigationEnd, RouteConfigLoadEnd, RouteConfigLoadStart} from './events';
+import {Event, NavigationEnd} from './events';
+import {LoadedRouterConfig, Route, Routes} from './models';
 import {Router} from './router';
 import {RouterConfigLoader} from './router_config_loader';
-
 
 /**
  * @description
@@ -38,6 +43,7 @@ export abstract class PreloadingStrategy {
  *
  * @publicApi
  */
+@Injectable({providedIn: 'root'})
 export class PreloadAllModules implements PreloadingStrategy {
   preload(route: Route, fn: () => Observable<any>): Observable<any> {
     return fn().pipe(catchError(() => of(null)));
@@ -53,6 +59,7 @@ export class PreloadAllModules implements PreloadingStrategy {
  *
  * @publicApi
  */
+@Injectable({providedIn: 'root'})
 export class NoPreloading implements PreloadingStrategy {
   preload(route: Route, fn: () => Observable<any>): Observable<any> {
     return of(null);
@@ -71,30 +78,29 @@ export class NoPreloading implements PreloadingStrategy {
  *
  * @publicApi
  */
-@Injectable()
+@Injectable({providedIn: 'root'})
 export class RouterPreloader implements OnDestroy {
-  private loader: RouterConfigLoader;
   private subscription?: Subscription;
 
   constructor(
-      private router: Router, moduleLoader: NgModuleFactoryLoader, compiler: Compiler,
-      private injector: Injector, private preloadingStrategy: PreloadingStrategy) {
-    const onStartLoad = (r: Route) => router.triggerEvent(new RouteConfigLoadStart(r));
-    const onEndLoad = (r: Route) => router.triggerEvent(new RouteConfigLoadEnd(r));
-
-    this.loader = new RouterConfigLoader(moduleLoader, compiler, onStartLoad, onEndLoad);
-  }
+    private router: Router,
+    compiler: Compiler,
+    private injector: EnvironmentInjector,
+    private preloadingStrategy: PreloadingStrategy,
+    private loader: RouterConfigLoader,
+  ) {}
 
   setUpPreloading(): void {
-    this.subscription =
-        this.router.events
-            .pipe(filter((e: Event) => e instanceof NavigationEnd), concatMap(() => this.preload()))
-            .subscribe(() => {});
+    this.subscription = this.router.events
+      .pipe(
+        filter((e: Event) => e instanceof NavigationEnd),
+        concatMap(() => this.preload()),
+      )
+      .subscribe(() => {});
   }
 
   preload(): Observable<any> {
-    const ngModule = this.injector.get(NgModuleRef);
-    return this.processRoutes(ngModule, this.router.config);
+    return this.processRoutes(this.injector, this.router.config);
   }
 
   /** @nodoc */
@@ -104,33 +110,68 @@ export class RouterPreloader implements OnDestroy {
     }
   }
 
-  private processRoutes(ngModule: NgModuleRef<any>, routes: Routes): Observable<void> {
+  private processRoutes(injector: EnvironmentInjector, routes: Routes): Observable<void> {
     const res: Observable<any>[] = [];
     for (const route of routes) {
-      // we already have the config loaded, just recurse
-      if (route.loadChildren && !route.canLoad && route._loadedConfig) {
-        const childConfig = route._loadedConfig;
-        res.push(this.processRoutes(childConfig.module, childConfig.routes));
+      if (route.providers && !route._injector) {
+        route._injector = createEnvironmentInjector(
+          route.providers,
+          injector,
+          `Route: ${route.path}`,
+        );
+      }
 
-        // no config loaded, fetch the config
-      } else if (route.loadChildren && !route.canLoad) {
-        res.push(this.preloadConfig(ngModule, route));
+      const injectorForCurrentRoute = route._injector ?? injector;
+      const injectorForChildren = route._loadedInjector ?? injectorForCurrentRoute;
 
-        // recurse into children
-      } else if (route.children) {
-        res.push(this.processRoutes(ngModule, route.children));
+      // Note that `canLoad` is only checked as a condition that prevents `loadChildren` and not
+      // `loadComponent`. `canLoad` guards only block loading of child routes by design. This
+      // happens as a consequence of needing to descend into children for route matching immediately
+      // while component loading is deferred until route activation. Because `canLoad` guards can
+      // have side effects, we cannot execute them here so we instead skip preloading altogether
+      // when present. Lastly, it remains to be decided whether `canLoad` should behave this way
+      // at all. Code splitting and lazy loading is separate from client-side authorization checks
+      // and should not be used as a security measure to prevent loading of code.
+      if (
+        (route.loadChildren && !route._loadedRoutes && route.canLoad === undefined) ||
+        (route.loadComponent && !route._loadedComponent)
+      ) {
+        res.push(this.preloadConfig(injectorForCurrentRoute, route));
+      }
+      if (route.children || route._loadedRoutes) {
+        res.push(this.processRoutes(injectorForChildren, (route.children ?? route._loadedRoutes)!));
       }
     }
-    return from(res).pipe(mergeAll(), map((_) => void 0));
+    return from(res).pipe(mergeAll());
   }
 
-  private preloadConfig(ngModule: NgModuleRef<any>, route: Route): Observable<void> {
+  private preloadConfig(injector: EnvironmentInjector, route: Route): Observable<void> {
     return this.preloadingStrategy.preload(route, () => {
-      const loaded$ = this.loader.load(ngModule.injector, route);
-      return loaded$.pipe(mergeMap((config: LoadedRouterConfig) => {
-        route._loadedConfig = config;
-        return this.processRoutes(config.module, config.routes);
-      }));
+      let loadedChildren$: Observable<LoadedRouterConfig | null>;
+      if (route.loadChildren && route.canLoad === undefined) {
+        loadedChildren$ = this.loader.loadChildren(injector, route);
+      } else {
+        loadedChildren$ = of(null);
+      }
+
+      const recursiveLoadChildren$ = loadedChildren$.pipe(
+        mergeMap((config: LoadedRouterConfig | null) => {
+          if (config === null) {
+            return of(void 0);
+          }
+          route._loadedRoutes = config.routes;
+          route._loadedInjector = config.injector;
+          // If the loaded config was a module, use that as the module/module injector going
+          // forward. Otherwise, continue using the current module/module injector.
+          return this.processRoutes(config.injector ?? injector, config.routes);
+        }),
+      );
+      if (route.loadComponent && !route._loadedComponent) {
+        const loadComponent$ = this.loader.loadComponent(route);
+        return from([recursiveLoadChildren$, loadComponent$]).pipe(mergeAll());
+      } else {
+        return recursiveLoadChildren$;
+      }
     });
   }
 }

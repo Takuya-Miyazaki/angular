@@ -3,7 +3,7 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {basename, dirname, resolve} from '../../src/helpers';
@@ -16,8 +16,10 @@ export abstract class MockFileSystem implements FileSystem {
   private _fileTree: Folder = {};
   private _cwd: AbsoluteFsPath;
 
-
-  constructor(private _isCaseSensitive = false, cwd: AbsoluteFsPath = '/' as AbsoluteFsPath) {
+  constructor(
+    private _isCaseSensitive = false,
+    cwd: AbsoluteFsPath = '/' as AbsoluteFsPath,
+  ) {
     this._cwd = this.normalize(cwd);
   }
 
@@ -47,16 +49,22 @@ export abstract class MockFileSystem implements FileSystem {
     }
   }
 
-  writeFile(path: AbsoluteFsPath, data: string|Uint8Array, exclusive: boolean = false): void {
+  writeFile(path: AbsoluteFsPath, data: string | Uint8Array, exclusive: boolean = false): void {
     const [folderPath, basename] = this.splitIntoFolderAndFile(path);
     const {entity} = this.findFromPath(folderPath);
     if (entity === null || !isFolder(entity)) {
       throw new MockFileSystemError(
-          'ENOENT', path, `Unable to write file "${path}". The containing folder does not exist.`);
+        'ENOENT',
+        path,
+        `Unable to write file "${path}". The containing folder does not exist.`,
+      );
     }
     if (exclusive && entity[basename] !== undefined) {
       throw new MockFileSystemError(
-          'EEXIST', path, `Unable to exclusively write file "${path}". The file already exists.`);
+        'EEXIST',
+        path,
+        `Unable to exclusively write file "${path}". The file already exists.`,
+      );
     }
     entity[basename] = data;
   }
@@ -66,11 +74,17 @@ export abstract class MockFileSystem implements FileSystem {
     const {entity} = this.findFromPath(folderPath);
     if (entity === null || !isFolder(entity)) {
       throw new MockFileSystemError(
-          'ENOENT', path, `Unable to remove file "${path}". The containing folder does not exist.`);
+        'ENOENT',
+        path,
+        `Unable to remove file "${path}". The containing folder does not exist.`,
+      );
     }
     if (isFolder(entity[basename])) {
       throw new MockFileSystemError(
-          'EISDIR', path, `Unable to remove file "${path}". The path to remove is a folder.`);
+        'EISDIR',
+        path,
+        `Unable to remove file "${path}". The path to remove is a folder.`,
+      );
     }
     delete entity[basename];
   }
@@ -80,8 +94,10 @@ export abstract class MockFileSystem implements FileSystem {
     const {entity} = this.findFromPath(folderPath);
     if (entity === null || !isFolder(entity)) {
       throw new MockFileSystemError(
-          'ENOENT', path,
-          `Unable to create symlink at "${path}". The containing folder does not exist.`);
+        'ENOENT',
+        path,
+        `Unable to create symlink at "${path}". The containing folder does not exist.`,
+      );
     }
     entity[basename] = new SymLink(target);
   }
@@ -90,11 +106,17 @@ export abstract class MockFileSystem implements FileSystem {
     const {entity} = this.findFromPath(path);
     if (entity === null) {
       throw new MockFileSystemError(
-          'ENOENT', path, `Unable to read directory "${path}". It does not exist.`);
+        'ENOENT',
+        path,
+        `Unable to read directory "${path}". It does not exist.`,
+      );
     }
     if (isFile(entity)) {
       throw new MockFileSystemError(
-          'ENOTDIR', path, `Unable to read directory "${path}". It is a file.`);
+        'ENOTDIR',
+        path,
+        `Unable to read directory "${path}". It is a file.`,
+      );
     }
     return Object.keys(entity) as PathSegment[];
   }
@@ -127,12 +149,17 @@ export abstract class MockFileSystem implements FileSystem {
     delete folder[name];
   }
 
-  ensureDir(path: AbsoluteFsPath): void {
-    const segments = this.splitPath(path).map(segment => this.getCanonicalPath(segment));
-    let current: Folder = this._fileTree;
+  ensureDir(path: AbsoluteFsPath): Folder {
+    const segments = this.splitPath(path).map((segment) => this.getCanonicalPath(segment));
 
     // Convert the root folder to a canonical empty string `''` (on Windows it would be `'C:'`).
     segments[0] = '';
+    if (segments.length > 1 && segments[segments.length - 1] === '') {
+      // Remove a trailing slash (unless the path was only `/`)
+      segments.pop();
+    }
+
+    let current: Folder = this._fileTree;
     for (const segment of segments) {
       if (isFile(current[segment])) {
         throw new Error(`Folder already exists as a file.`);
@@ -142,6 +169,7 @@ export abstract class MockFileSystem implements FileSystem {
       }
       current = current[segment] as Folder;
     }
+    return current;
   }
 
   removeDeep(path: AbsoluteFsPath): void {
@@ -149,8 +177,10 @@ export abstract class MockFileSystem implements FileSystem {
     const {entity} = this.findFromPath(folderPath);
     if (entity === null || !isFolder(entity)) {
       throw new MockFileSystemError(
-          'ENOENT', path,
-          `Unable to remove folder "${path}". The containing folder does not exist.`);
+        'ENOENT',
+        path,
+        `Unable to remove folder "${path}". The containing folder does not exist.`,
+      );
     }
     delete entity[basename];
   }
@@ -159,7 +189,7 @@ export abstract class MockFileSystem implements FileSystem {
     return this.dirname(path) === path;
   }
 
-  extname(path: AbsoluteFsPath|PathSegment): string {
+  extname(path: AbsoluteFsPath | PathSegment): string {
     const match = /.+(\.[^.]*)$/.exec(path);
     return match !== null ? match[1] : '';
   }
@@ -168,7 +198,10 @@ export abstract class MockFileSystem implements FileSystem {
     const result = this.findFromPath(filePath, {followSymLinks: true});
     if (result.entity === null) {
       throw new MockFileSystemError(
-          'ENOENT', filePath, `Unable to find the real path of "${filePath}". It does not exist.`);
+        'ENOENT',
+        filePath,
+        `Unable to find the real path of "${filePath}". It does not exist.`,
+      );
     } else {
       return result.path;
     }
@@ -214,35 +247,53 @@ export abstract class MockFileSystem implements FileSystem {
   abstract resolve(...paths: string[]): AbsoluteFsPath;
   abstract dirname<T extends string>(file: T): T;
   abstract join<T extends string>(basePath: T, ...paths: string[]): T;
-  abstract relative<T extends PathString>(from: T, to: T): PathSegment|AbsoluteFsPath;
+  abstract relative<T extends PathString>(from: T, to: T): PathSegment | AbsoluteFsPath;
   abstract basename(filePath: string, extension?: string): PathSegment;
   abstract isRooted(path: string): boolean;
   abstract normalize<T extends PathString>(path: T): T;
   protected abstract splitPath<T extends PathString>(path: T): string[];
 
   dump(): Folder {
-    return this.cloneFolder(this._fileTree);
+    const {entity} = this.findFromPath(this.resolve('/'));
+    if (entity === null || !isFolder(entity)) {
+      return {};
+    }
+
+    return this.cloneFolder(entity);
   }
+
   init(folder: Folder): void {
-    this._fileTree = this.cloneFolder(folder);
+    this.mount(this.resolve('/'), folder);
+  }
+
+  mount(path: AbsoluteFsPath, folder: Folder): void {
+    if (this.exists(path)) {
+      throw new Error(`Unable to mount in '${path}' as it already exists.`);
+    }
+    const mountFolder = this.ensureDir(path);
+
+    this.copyInto(folder, mountFolder);
   }
 
   private cloneFolder(folder: Folder): Folder {
     const clone: Folder = {};
-    for (const path in folder) {
-      const item = folder[path];
-      const canonicalPath = this.getCanonicalPath(path);
-      if (isSymLink(item)) {
-        clone[canonicalPath] = new SymLink(this.getCanonicalPath(item.path));
-      } else if (isFolder(item)) {
-        clone[canonicalPath] = this.cloneFolder(item);
-      } else {
-        clone[canonicalPath] = folder[path];
-      }
-    }
+    this.copyInto(folder, clone);
     return clone;
   }
 
+  private copyInto(from: Folder, to: Folder): void {
+    for (const path in from) {
+      const item = from[path];
+      const canonicalPath = this.getCanonicalPath(path);
+      if (isSymLink(item)) {
+        to[canonicalPath] = new SymLink(this.getCanonicalPath(item.path));
+      } else if (isFolder(item)) {
+        to[canonicalPath] = this.cloneFolder(item);
+      } else {
+        to[canonicalPath] = from[path];
+      }
+    }
+  }
 
   protected findFromPath(path: AbsoluteFsPath, options?: {followSymLinks: boolean}): FindResult {
     const followSymLinks = !!options && options.followSymLinks;
@@ -253,15 +304,24 @@ export abstract class MockFileSystem implements FileSystem {
     }
     // Convert the root folder to a canonical empty string `""` (on Windows it would be `C:`).
     segments[0] = '';
-    let current: Entity|null = this._fileTree;
+    let current: Entity | null = this._fileTree;
     while (segments.length) {
       current = current[this.getCanonicalPath(segments.shift()!)];
       if (current === undefined) {
         return {path, entity: null};
       }
-      if (segments.length > 0 && (!isFolder(current))) {
-        current = null;
-        break;
+      if (segments.length > 0) {
+        if (isFile(current)) {
+          // Reaching a file when there's still remaining segments means that the requested path
+          // does not actually exist.
+          current = null;
+          break;
+        }
+        if (isSymLink(current)) {
+          // Intermediate directories that are themselves symlinks should always be followed
+          // regardless of `followSymLinks`, as otherwise the remaining segments would not be found.
+          return this.findFromPath(resolve(current.path, ...segments), {followSymLinks});
+        }
       }
       if (isFile(current)) {
         break;
@@ -284,18 +344,18 @@ export abstract class MockFileSystem implements FileSystem {
   }
 
   protected getCanonicalPath<T extends string>(p: T): T {
-    return this.isCaseSensitive() ? p : p.toLowerCase() as T;
+    return this.isCaseSensitive() ? p : (p.toLowerCase() as T);
   }
 }
 export interface FindResult {
   path: AbsoluteFsPath;
-  entity: Entity|null;
+  entity: Entity | null;
 }
-export type Entity = Folder|File|SymLink;
+export type Entity = Folder | File | SymLink;
 export interface Folder {
   [pathSegments: string]: Entity;
 }
-export type File = string|Uint8Array;
+export type File = string | Uint8Array;
 export class SymLink {
   constructor(public path: AbsoluteFsPath) {}
 }
@@ -314,19 +374,23 @@ class MockFileStats implements FileStats {
 }
 
 class MockFileSystemError extends Error {
-  constructor(public code: string, public path: string, message: string) {
+  constructor(
+    public code: string,
+    public path: string,
+    message: string,
+  ) {
     super(message);
   }
 }
 
-export function isFile(item: Entity|null): item is File {
+export function isFile(item: Entity | null): item is File {
   return Buffer.isBuffer(item) || typeof item === 'string';
 }
 
-export function isSymLink(item: Entity|null): item is SymLink {
+export function isSymLink(item: Entity | null): item is SymLink {
   return item instanceof SymLink;
 }
 
-export function isFolder(item: Entity|null): item is Folder {
+export function isFolder(item: Entity | null): item is Folder {
   return item !== null && !isFile(item) && !isSymLink(item);
 }

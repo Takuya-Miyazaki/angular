@@ -3,7 +3,15 @@
 To improve cross platform support, all file access (and path manipulation)
 is now done through a well known interface (`FileSystem`).
 
-For testing a number of `MockFileSystem` implementations are supplied.
+Note that `FileSystem` extends `ReadonlyFileSystem`, which itself extends
+`PathManipulation`.
+If you are using a file-system object you should only ask for the type that supports
+all the methods that you require.
+For example, if you have a function (`foo()`) that only needs to resolve paths then
+it should only require `PathManipulation`: `foo(fs: PathManipulation)`.
+This allows the caller to avoid implementing unneeded functionality.
+
+For testing, a number of `MockFileSystem` implementations are supplied.
 These provide an in-memory file-system which emulates operating systems
 like OS/X, Unix and Windows.
 
@@ -15,6 +23,11 @@ has been initialized before using any of these helper methods.
 To prevent this happening accidentally the current file system always starts out
 as an instance of `InvalidFileSystem`, which will throw an error if any of its
 methods are called.
+
+Generally it is safer to explicitly pass file-system objects to constructors or
+free-standing functions if possible. This avoids confusing bugs where the
+global file-system has not been set-up correctly before calling functions that
+expect there to be a file-system configured globally.
 
 You can set the current file-system by calling `setFileSystem()`.
 During testing you can call the helper function `initMockFileSystem(os)`
@@ -34,9 +47,9 @@ wrapped tests in each of the mock file-systems, it calls `initMockFileSystem()`
 for each OS to emulate.
 * `loadTestFiles()` - use this to add files and their contents
 to the mock file system for testing.
-* `loadStandardTestFiles()` - use this to load a mirror image of files on
-disk into the in-memory mock file-system.
-* `loadFakeCore()` - use this to load a fake version of `@angular/core`
+* `loadStandardTestFiles()` - use this to load a mirror image of Angular test
+files on disk into the in-memory mock file-system.
+* `loadAngularCore()` - use this to load the npm package of `@angular/core`
 into the mock file-system.
 
-All ngcc and ngtsc source and tests now use this virtual file-system setup.
+All ngtsc source and tests now use this virtual file-system setup.

@@ -3,22 +3,36 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, EventEmitter, HostListener, Inject, InjectionToken, Input, Output, QueryList, ViewChild} from '@angular/core';
+import {
+  AfterViewInit,
+  ChangeDetectionStrategy,
+  ChangeDetectorRef,
+  Component,
+  ElementRef,
+  EventEmitter,
+  HostListener,
+  Inject,
+  InjectionToken,
+  Input,
+  Output,
+  QueryList,
+  ViewChild,
+} from '@angular/core';
 
 import {expanding_row_css} from './expanding_row_css';
 import {ExpandingRowSummary} from './expanding_row_summary';
 import {ExpandingRowToggleEvent} from './expanding_row_toggle_event';
 
-
 /**
  * Injection token to break cylic dependency between ExpandingRow and
  * ExpandingRowHost
  */
-export const EXPANDING_ROW_HOST_INJECTION_TOKEN =
-    new InjectionToken<ExpandingRowHostBase>('ExpandingRowHost');
+export const EXPANDING_ROW_HOST_INJECTION_TOKEN = new InjectionToken<ExpandingRowHostBase>(
+  'ExpandingRowHost',
+);
 
 /** The base class for ExpandingRowHost component to break cylic dependency. */
 export interface ExpandingRowHostBase {
@@ -45,10 +59,10 @@ export interface ExpandingRowHostBase {
   handleRowSummaryClick(row: ExpandingRow): void;
 
   /**
-   * Check if element is blacklisted.  Blacklisted elements will not collapse an
+   * Check if element is collapsible.  Elements marked as uncollapsible will not collapse an
    * open row when clicked.
    */
-  isBlacklisted(element: HTMLElement|null): boolean;
+  isCollapsible(element: HTMLElement | null): boolean;
 
   /**
    * Handles caption element click on a cfc-expanding-row component. Note
@@ -95,17 +109,19 @@ export interface ExpandingRowHostBase {
 @Component({
   selector: 'cfc-expanding-row',
   styles: [expanding_row_css],
-  template: `
-  <div #expandingRowMainElement
-       class="cfc-expanding-row"
-       cdkMonitorSubtreeFocus
-       [attr.tabindex]="isExpanded ? '0' : '-1'"
-       [class.cfc-expanding-row-has-focus]="isFocused"
-       [class.cfc-expanding-row-is-expanded]="isExpanded"
-       ve="CfcExpandingRow">
+  template: ` <div
+    #expandingRowMainElement
+    class="cfc-expanding-row"
+    cdkMonitorSubtreeFocus
+    [attr.tabindex]="isExpanded ? '0' : '-1'"
+    [class.cfc-expanding-row-has-focus]="isFocused"
+    [class.cfc-expanding-row-is-expanded]="isExpanded"
+    ve="CfcExpandingRow"
+  >
     <ng-content></ng-content>
   </div>`,
   changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: false,
 })
 export class ExpandingRow {
   /**
@@ -218,9 +234,10 @@ export class ExpandingRow {
    * focused.
    */
   constructor(
-      public elementRef: ElementRef,
-      @Inject(EXPANDING_ROW_HOST_INJECTION_TOKEN) public expandingRowHost: ExpandingRowHostBase,
-      private readonly changeDetectorRef: ChangeDetectorRef) {}
+    public elementRef: ElementRef,
+    @Inject(EXPANDING_ROW_HOST_INJECTION_TOKEN) public expandingRowHost: ExpandingRowHostBase,
+    private readonly changeDetectorRef: ChangeDetectorRef,
+  ) {}
 
   /**
    * Handles click on cfc-expanding-row-summary component. This will expand
@@ -228,8 +245,9 @@ export class ExpandingRow {
    * is handled in [cfcExpandingRowHost] directive.
    */
   handleSummaryClick(): void {
-    this.collapsedHeight =
-        this.elementRef.nativeElement.querySelector('.cfc-expanding-row-summary').offsetHeight;
+    this.collapsedHeight = this.elementRef.nativeElement.querySelector(
+      '.cfc-expanding-row-summary',
+    ).offsetHeight;
     this.expandingRowHost.handleRowSummaryClick(this);
     this.expand();
   }
@@ -247,16 +265,15 @@ export class ExpandingRow {
    * notify click on its host element. Note that caption is only shown when
    * the row is expanded. Hence this will collapse this row and put the focus
    * on it.
-   * If a blacklisted element exists in the caption, clicking that element will
+   * If an uncollapsible element exists in the caption, clicking that element will
    * not trigger the row collapse.
    */
   handleCaptionClick(event: MouseEvent): void {
-    if (this.expandingRowHost.isBlacklisted(event.target as {} as HTMLElement)) {
-      return;
+    if (this.expandingRowHost.isCollapsible(event.target as {} as HTMLElement)) {
+      this.expandingRowHost.handleRowCaptionClick(this);
+      this.collapse();
+      this.focus();
     }
-    this.expandingRowHost.handleRowCaptionClick(this);
-    this.collapse();
-    this.focus();
   }
 
   /**

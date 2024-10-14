@@ -3,7 +3,7 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 export const $COMPILE = '$compile';
@@ -15,6 +15,7 @@ export const $INJECTOR = '$injector';
 export const $INTERVAL = '$interval';
 export const $PARSE = '$parse';
 export const $PROVIDE = '$provide';
+export const $ROOT_ELEMENT = '$rootElement';
 export const $ROOT_SCOPE = '$rootScope';
 export const $SCOPE = '$scope';
 export const $TEMPLATE_CACHE = '$templateCache';

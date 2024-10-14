@@ -3,11 +3,11 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {NormalizedUrl} from './api';
-
+import {NamedCacheStorage} from './named-cache-storage';
 
 /**
  * Adapts the service worker to its runtime environment.
@@ -15,26 +15,29 @@ import {NormalizedUrl} from './api';
  * Mostly, this is used to mock out identifiers which are otherwise read
  * from the global scope.
  */
-export class Adapter {
-  readonly cacheNamePrefix: string;
-  private readonly origin: string;
+export class Adapter<T extends CacheStorage = CacheStorage> {
+  readonly caches: NamedCacheStorage<T>;
+  readonly origin: string;
 
-  constructor(protected readonly scopeUrl: string) {
+  constructor(
+    protected readonly scopeUrl: string,
+    caches: T,
+  ) {
     const parsedScopeUrl = this.parseUrl(this.scopeUrl);
 
     // Determine the origin from the registration scope. This is used to differentiate between
     // relative and absolute URLs.
     this.origin = parsedScopeUrl.origin;
 
-    // Suffixing `ngsw` with the baseHref to avoid clash of cache names for SWs with different
-    // scopes on the same domain.
-    this.cacheNamePrefix = 'ngsw:' + parsedScopeUrl.path;
+    // Use the baseHref in the cache name prefix to avoid clash of cache names for SWs with
+    // different scopes on the same domain.
+    this.caches = new NamedCacheStorage(caches, `ngsw:${parsedScopeUrl.path}`);
   }
 
   /**
    * Wrapper around the `Request` constructor.
    */
-  newRequest(input: string|Request, init?: RequestInit): Request {
+  newRequest(input: string | Request, init?: RequestInit): Request {
     return new Request(input, init);
   }
 
@@ -56,7 +59,7 @@ export class Adapter {
    * Test if a given object is an instance of `Client`.
    */
   isClient(source: any): source is Client {
-    return (source instanceof Client);
+    return source instanceof Client;
   }
 
   /**
@@ -87,7 +90,7 @@ export class Adapter {
   /**
    * Parse a URL into its different parts, such as `origin`, `path` and `search`.
    */
-  parseUrl(url: string, relativeTo?: string): {origin: string, path: string, search: string} {
+  parseUrl(url: string, relativeTo?: string): {origin: string; path: string; search: string} {
     // Workaround a Safari bug, see
     // https://github.com/angular/angular/issues/31061#issuecomment-503637978
     const parsed = !relativeTo ? new URL(url) : new URL(url, relativeTo);
@@ -98,19 +101,8 @@ export class Adapter {
    * Wait for a given amount of time before completing a Promise.
    */
   timeout(ms: number): Promise<void> {
-    return new Promise<void>(resolve => {
+    return new Promise<void>((resolve) => {
       setTimeout(() => resolve(), ms);
     });
   }
-}
-
-/**
- * An event context in which an operation is taking place, which allows
- * the delaying of Service Worker shutdown until certain triggers occur.
- */
-export interface Context {
-  /**
-   * Delay shutdown of the Service Worker until the given promise resolves.
-   */
-  waitUntil(fn: Promise<any>): void;
 }

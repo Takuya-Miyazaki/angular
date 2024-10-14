@@ -3,7 +3,7 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 /*
@@ -27,28 +27,32 @@ import {isNode, zoneSymbol} from '../lib/common/utils';
 export {zoneSymbol};
 
 declare const global: any;
-export function ifEnvSupports(test: any, block: Function): () => void {
-  return _ifEnvSupports(test, block);
+export function ifEnvSupports(test: any, block: Function, otherwise?: Function): () => void {
+  return _ifEnvSupports(test, block, otherwise);
 }
 
-export function ifEnvSupportsWithDone(test: any, block: Function): (done: Function) => void {
-  return _ifEnvSupports(test, block, true);
+export function ifEnvSupportsWithDone(
+  test: any,
+  block: Function,
+  otherwise?: Function,
+): (done: Function) => void {
+  return _ifEnvSupports(test, block, otherwise, true);
 }
 
-function _ifEnvSupports(test: any, block: Function, withDone = false) {
+function _ifEnvSupports(test: any, block: Function, otherwise?: Function, withDone = false) {
   if (withDone) {
-    return function(done?: Function) {
-      _runTest(test, block, done);
+    return function (done?: Function) {
+      _runTest(test, block, otherwise, done);
     };
   } else {
-    return function() {
-      _runTest(test, block, undefined);
+    return function () {
+      _runTest(test, block, otherwise, undefined);
     };
   }
 }
 
-function _runTest(test: any, block: Function, done?: Function) {
-  const message = (test.message || test.name || test);
+function _runTest(test: any, block: Function, otherwise?: Function, done?: Function) {
+  const message = test.message || test.name || test;
   if (typeof test === 'string' ? !!global[test] : test()) {
     if (done) {
       block(done);
@@ -57,7 +61,8 @@ function _runTest(test: any, block: Function, done?: Function) {
     }
   } else {
     console.log('WARNING: skipping ' + message + ' tests (missing this API)');
-    done && done();
+    otherwise?.();
+    done?.();
   }
 }
 
@@ -77,7 +82,7 @@ let supportSetErrorStack = true;
 export function isSupportSetErrorStack() {
   try {
     throw new Error('test');
-  } catch (err) {
+  } catch (err: any) {
     try {
       err.stack = 'new stack';
       supportSetErrorStack = err.stack === 'new stack';
@@ -93,9 +98,15 @@ export function isSupportSetErrorStack() {
 export function asyncTest(this: unknown, testFn: Function, zone: Zone = Zone.current) {
   const AsyncTestZoneSpec = (Zone as any)['AsyncTestZoneSpec'];
   return (done: Function) => {
-    let asyncTestZone: Zone = zone.fork(new AsyncTestZoneSpec(() => {}, (error: Error) => {
-      fail(error);
-    }, 'asyncTest'));
+    let asyncTestZone: Zone = zone.fork(
+      new AsyncTestZoneSpec(
+        () => {},
+        (error: Error) => {
+          fail(error);
+        },
+        'asyncTest',
+      ),
+    );
     asyncTestZone.run(testFn, this, [done]);
   };
 }

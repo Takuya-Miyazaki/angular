@@ -1,6 +1,6 @@
 // Sauce configuration
 
-module.exports = function(config, ignoredLaunchers) {
+module.exports = function (config, ignoredLaunchers) {
   // The WS server is not available with Sauce
   config.files.unshift('test/saucelabs.js');
 
@@ -17,10 +17,18 @@ module.exports = function(config, ignoredLaunchers) {
     },*/
     //'SL_SAFARI8':
     //    {base: 'SauceLabs', browserName: 'safari', platform: 'OS X 10.10', version: '8.0'},
-    'SL_SAFARI9':
-        {base: 'SauceLabs', browserName: 'safari', platform: 'OS X 10.11', version: '9.0'},
-    'SL_SAFARI10':
-        {base: 'SauceLabs', browserName: 'safari', platform: 'OS X 10.11', version: '10.0'},
+    'SL_SAFARI9': {
+      base: 'SauceLabs',
+      browserName: 'safari',
+      platform: 'OS X 10.11',
+      version: '9.0',
+    },
+    'SL_SAFARI10': {
+      base: 'SauceLabs',
+      browserName: 'safari',
+      platform: 'OS X 10.11',
+      version: '10.0',
+    },
     /*
      no longer supported in SauceLabs
     'SL_IOS7': {
@@ -38,35 +46,17 @@ module.exports = function(config, ignoredLaunchers) {
     // 'SL_IOS9': {base: 'SauceLabs', browserName: 'iphone', platform: 'OS X 10.10', version:
     // '9.3'},
     'SL_IOS10': {base: 'SauceLabs', browserName: 'iphone', platform: 'OS X 10.10', version: '10.3'},
-    'SL_IE9': {
-      base: 'SauceLabs',
-      browserName: 'internet explorer',
-      platform: 'Windows 2008',
-      version: '9'
-    },
-    'SL_IE10': {
-      base: 'SauceLabs',
-      browserName: 'internet explorer',
-      platform: 'Windows 2012',
-      version: '10'
-    },
-    'SL_IE11': {
-      base: 'SauceLabs',
-      browserName: 'internet explorer',
-      platform: 'Windows 10',
-      version: '11'
-    },
     'SL_MSEDGE': {
       base: 'SauceLabs',
       browserName: 'MicrosoftEdge',
       platform: 'Windows 10',
-      version: '14.14393'
+      version: '14.14393',
     },
     'SL_MSEDGE15': {
       base: 'SauceLabs',
       browserName: 'MicrosoftEdge',
       platform: 'Windows 10',
-      version: '15.15063'
+      version: '15.15063',
     },
     /*
      fix issue #584, Android 4.1~4.3 are not supported
@@ -98,20 +88,20 @@ module.exports = function(config, ignoredLaunchers) {
       appiumVersion: '1.12.1',
       platformName: 'Android',
       deviceName: 'Android GoogleAPI Emulator',
-      platformVersion: '8.0'
-    }
+      platformVersion: '8.0',
+    },
   };
 
   var customLaunchers = {};
   if (!ignoredLaunchers) {
     customLaunchers = basicLaunchers;
   } else {
-    Object.keys(basicLaunchers).forEach(function(key) {
-      if (ignoredLaunchers
-              .filter(function(ignore) {
-                return ignore === key;
-              })
-              .length === 0) {
+    Object.keys(basicLaunchers).forEach(function (key) {
+      if (
+        ignoredLaunchers.filter(function (ignore) {
+          return ignore === key;
+        }).length === 0
+      ) {
         customLaunchers[key] = basicLaunchers[key];
       }
     });
@@ -130,8 +120,8 @@ module.exports = function(config, ignoredLaunchers) {
         'selenium-version': '2.53.0',
         'command-timeout': 600,
         'idle-timeout': 600,
-        'max-duration': 5400
-      }
+        'max-duration': 5400,
+      },
     },
 
     customLaunchers: customLaunchers,
@@ -142,12 +132,12 @@ module.exports = function(config, ignoredLaunchers) {
 
     singleRun: true,
 
-    plugins: ['karma-*']
+    plugins: ['karma-*'],
   });
 
   if (process.env.TRAVIS) {
     config.sauceLabs.build =
-        'TRAVIS #' + process.env.TRAVIS_BUILD_NUMBER + ' (' + process.env.TRAVIS_BUILD_ID + ')';
+      'TRAVIS #' + process.env.TRAVIS_BUILD_NUMBER + ' (' + process.env.TRAVIS_BUILD_ID + ')';
     config.sauceLabs.tunnelIdentifier = process.env.TRAVIS_JOB_NUMBER;
 
     process.env.SAUCE_ACCESS_KEY = process.env.SAUCE_ACCESS_KEY.split('').reverse().join('');

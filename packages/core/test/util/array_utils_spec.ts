@@ -3,10 +3,21 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {arrayIndexOfSorted, arrayInsert, arrayInsert2, arrayInsertSorted, arrayRemoveSorted, arraySplice, flatten, KeyValueArray, keyValueArrayDelete, keyValueArrayGet, keyValueArrayIndexOf, keyValueArraySet} from '../../src/util/array_utils';
+import {
+  arrayIndexOfSorted,
+  arrayInsert,
+  arrayInsert2,
+  arraySplice,
+  flatten,
+  KeyValueArray,
+  keyValueArrayDelete,
+  keyValueArrayGet,
+  keyValueArrayIndexOf,
+  keyValueArraySet,
+} from '../../src/util/array_utils';
 
 describe('array_utils', () => {
   describe('flatten', () => {
@@ -71,63 +82,15 @@ describe('array_utils', () => {
       expectArrayInsert2([0, 1, 2], 2, 'A', 'B').toEqual([0, 1, 'A', 'B', 2]);
       expectArrayInsert2([0, 1, 2], 3, 'A', 'B').toEqual([0, 1, 2, 'A', 'B']);
       expectArrayInsert2(['height', '1px', 'width', '2000px'], 0, 'color', 'red').toEqual([
-        'color', 'red', 'height', '1px', 'width', '2000px'
+        'color',
+        'red',
+        'height',
+        '1px',
+        'width',
+        '2000px',
       ]);
     });
   });
-
-  describe('arrayInsertSorted', () => {
-    it('should insert items don\'t allow duplicates', () => {
-      let a;
-      a = ['a', 'c', 'e', 'g', 'i'];
-      expect(arrayInsertSorted(a, 'a')).toEqual(0);
-      expect(a).toEqual(['a', 'c', 'e', 'g', 'i']);
-
-      a = ['a', 'c', 'e', 'g', 'i'];
-      expect(arrayInsertSorted(a, 'b')).toEqual(1);
-      expect(a).toEqual(['a', 'b', 'c', 'e', 'g', 'i']);
-
-      a = ['a', 'c', 'e', 'g', 'i'];
-      expect(arrayInsertSorted(a, 'c')).toEqual(1);
-      expect(a).toEqual(['a', 'c', 'e', 'g', 'i']);
-
-      a = ['a', 'c', 'e', 'g', 'i'];
-      expect(arrayInsertSorted(a, 'd')).toEqual(2);
-      expect(a).toEqual(['a', 'c', 'd', 'e', 'g', 'i']);
-
-      a = ['a', 'c', 'e', 'g', 'i'];
-      expect(arrayInsertSorted(a, 'e')).toEqual(2);
-      expect(a).toEqual(['a', 'c', 'e', 'g', 'i']);
-    });
-  });
-
-
-
-  describe('arrayRemoveSorted', () => {
-    it('should remove items', () => {
-      let a;
-      a = ['a', 'b', 'c', 'd', 'e'];
-      expect(arrayRemoveSorted(a, 'a')).toEqual(0);
-      expect(a).toEqual(['b', 'c', 'd', 'e']);
-
-      a = ['a', 'b', 'c', 'd', 'e'];
-      expect(arrayRemoveSorted(a, 'b')).toEqual(1);
-      expect(a).toEqual(['a', 'c', 'd', 'e']);
-
-      a = ['a', 'b', 'c', 'd', 'e'];
-      expect(arrayRemoveSorted(a, 'c')).toEqual(2);
-      expect(a).toEqual(['a', 'b', 'd', 'e']);
-
-      a = ['a', 'b', 'c', 'd', 'e'];
-      expect(arrayRemoveSorted(a, 'd')).toEqual(3);
-      expect(a).toEqual(['a', 'b', 'c', 'e']);
-
-      a = ['a', 'b', 'c', 'd', 'e'];
-      expect(arrayRemoveSorted(a, 'e')).toEqual(4);
-      expect(a).toEqual(['a', 'b', 'c', 'd']);
-    });
-  });
-
 
   describe('arrayIndexOfSorted', () => {
     it('should get index of', () => {

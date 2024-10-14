@@ -3,7 +3,7 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {SecurityContext} from '../core';
@@ -19,7 +19,7 @@ import {SecurityContext} from '../core';
 //
 // =================================================================================================
 
-/** Map from tagName|propertyName SecurityContext. Properties applying to all tags use '*'. */
+/** Map from tagName|propertyName to SecurityContext. Properties applying to all tags use '*'. */
 let _SECURITY_SCHEMA!: {[k: string]: SecurityContext};
 
 export function SECURITY_SCHEMA(): {[k: string]: SecurityContext} {
@@ -27,18 +27,28 @@ export function SECURITY_SCHEMA(): {[k: string]: SecurityContext} {
     _SECURITY_SCHEMA = {};
     // Case is insignificant below, all element and attribute names are lower-cased for lookup.
 
-    registerContext(SecurityContext.HTML, [
-      'iframe|srcdoc',
-      '*|innerHTML',
-      '*|outerHTML',
-    ]);
+    registerContext(SecurityContext.HTML, ['iframe|srcdoc', '*|innerHTML', '*|outerHTML']);
     registerContext(SecurityContext.STYLE, ['*|style']);
     // NB: no SCRIPT contexts here, they are never allowed due to the parser stripping them.
     registerContext(SecurityContext.URL, [
-      '*|formAction', 'area|href',       'area|ping',       'audio|src',    'a|href',
-      'a|ping',       'blockquote|cite', 'body|background', 'del|cite',     'form|action',
-      'img|src',      'img|srcset',      'input|src',       'ins|cite',     'q|cite',
-      'source|src',   'source|srcset',   'track|src',       'video|poster', 'video|src',
+      '*|formAction',
+      'area|href',
+      'area|ping',
+      'audio|src',
+      'a|href',
+      'a|ping',
+      'blockquote|cite',
+      'body|background',
+      'del|cite',
+      'form|action',
+      'img|src',
+      'input|src',
+      'ins|cite',
+      'q|cite',
+      'source|src',
+      'track|src',
+      'video|poster',
+      'video|src',
     ]);
     registerContext(SecurityContext.RESOURCE_URL, [
       'applet|code',
@@ -61,4 +71,32 @@ export function SECURITY_SCHEMA(): {[k: string]: SecurityContext} {
 
 function registerContext(ctx: SecurityContext, specs: string[]) {
   for (const spec of specs) _SECURITY_SCHEMA[spec.toLowerCase()] = ctx;
+}
+
+/**
+ * The set of security-sensitive attributes of an `<iframe>` that *must* be
+ * applied as a static attribute only. This ensures that all security-sensitive
+ * attributes are taken into account while creating an instance of an `<iframe>`
+ * at runtime.
+ *
+ * Note: avoid using this set directly, use the `isIframeSecuritySensitiveAttr` function
+ * in the code instead.
+ */
+export const IFRAME_SECURITY_SENSITIVE_ATTRS = new Set([
+  'sandbox',
+  'allow',
+  'allowfullscreen',
+  'referrerpolicy',
+  'csp',
+  'fetchpriority',
+]);
+
+/**
+ * Checks whether a given attribute name might represent a security-sensitive
+ * attribute of an <iframe>.
+ */
+export function isIframeSecuritySensitiveAttr(attrName: string): boolean {
+  // The `setAttribute` DOM API is case-insensitive, so we lowercase the value
+  // before checking it against a known security-sensitive attributes.
+  return IFRAME_SECURITY_SENSITIVE_ATTRS.has(attrName.toLowerCase());
 }

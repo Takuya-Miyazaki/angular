@@ -3,53 +3,47 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {combineLatest, Observable, OperatorFunction} from 'rxjs';
-import {filter, map, scan, startWith, switchMap, take} from 'rxjs/operators';
+import {filter, map, startWith, switchMap, take} from 'rxjs/operators';
 
-import {UrlTree} from '../url_tree';
-import {isUrlTree} from '../utils/type_guards';
+import {GuardResult, RedirectCommand} from '../models';
+import {isUrlTree, UrlTree} from '../url_tree';
 
-const INITIAL_VALUE = Symbol('INITIAL_VALUE');
-declare type INTERIM_VALUES = typeof INITIAL_VALUE | boolean | UrlTree;
+const INITIAL_VALUE = /* @__PURE__ */ Symbol('INITIAL_VALUE');
+declare type INTERIM_VALUES = typeof INITIAL_VALUE | GuardResult;
 
-export function prioritizedGuardValue():
-    OperatorFunction<Observable<boolean|UrlTree>[], boolean|UrlTree> {
-  return switchMap(obs => {
+export function prioritizedGuardValue(): OperatorFunction<Observable<GuardResult>[], GuardResult> {
+  return switchMap((obs) => {
     return combineLatest(
-               ...obs.map(o => o.pipe(take(1), startWith(INITIAL_VALUE as INTERIM_VALUES))))
-               .pipe(
-                   scan(
-                       (acc: INTERIM_VALUES, list: INTERIM_VALUES[]) => {
-                         let isPending = false;
-                         return list.reduce((innerAcc, val, i: number) => {
-                           if (innerAcc !== INITIAL_VALUE) return innerAcc;
-
-                           // Toggle pending flag if any values haven't been set yet
-                           if (val === INITIAL_VALUE) isPending = true;
-
-                           // Any other return values are only valid if we haven't yet hit a pending
-                           // call. This guarantees that in the case of a guard at the bottom of the
-                           // tree that returns a redirect, we will wait for the higher priority
-                           // guard at the top to finish before performing the redirect.
-                           if (!isPending) {
-                             // Early return when we hit a `false` value as that should always
-                             // cancel navigation
-                             if (val === false) return val;
-
-                             if (i === list.length - 1 || isUrlTree(val)) {
-                               return val;
-                             }
-                           }
-
-                           return innerAcc;
-                         }, acc);
-                       },
-                       INITIAL_VALUE),
-                   filter(item => item !== INITIAL_VALUE),
-                   map(item => isUrlTree(item) ? item : item === true),  //
-                   take(1)) as Observable<boolean|UrlTree>;
+      obs.map((o) => o.pipe(take(1), startWith(INITIAL_VALUE as INTERIM_VALUES))),
+    ).pipe(
+      map((results: INTERIM_VALUES[]) => {
+        for (const result of results) {
+          if (result === true) {
+            // If result is true, check the next one
+            continue;
+          } else if (result === INITIAL_VALUE) {
+            // If guard has not finished, we need to stop processing.
+            return INITIAL_VALUE;
+          } else if (result === false || isRedirect(result)) {
+            // Result finished and was not true. Return the result.
+            // Note that we only allow false/UrlTree/RedirectCommand. Other values are considered invalid and
+            // ignored.
+            return result;
+          }
+        }
+        // Everything resolved to true. Return true.
+        return true;
+      }),
+      filter((item): item is GuardResult => item !== INITIAL_VALUE),
+      take(1),
+    );
   });
+}
+
+function isRedirect(val: INTERIM_VALUES): val is UrlTree | RedirectCommand {
+  return isUrlTree(val) || val instanceof RedirectCommand;
 }

@@ -3,15 +3,16 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {ɵgetDOM as getDOM} from '@angular/common';
 import {ApplicationRef, ComponentRef} from '@angular/core';
-import {window} from './browser';
 
 export class ChangeDetectionPerfRecord {
-  constructor(public msPerTick: number, public numTicks: number) {}
+  constructor(
+    public msPerTick: number,
+    public numTicks: number,
+  ) {}
 }
 
 /**
@@ -45,24 +46,23 @@ export class AngularProfiler {
   timeChangeDetection(config: any): ChangeDetectionPerfRecord {
     const record = config && config['record'];
     const profileName = 'Change Detection';
-    // Profiler is not available in Android browsers, nor in IE 9 without dev tools opened
-    const isProfilerAvailable = window.console.profile != null;
-    if (record && isProfilerAvailable) {
-      window.console.profile(profileName);
+    // Profiler is not available in Android browsers without dev tools opened
+    if (record && 'profile' in console && typeof console.profile === 'function') {
+      console.profile(profileName);
     }
-    const start = getDOM().performanceNow();
+    const start = performance.now();
     let numTicks = 0;
-    while (numTicks < 5 || (getDOM().performanceNow() - start) < 500) {
+    while (numTicks < 5 || performance.now() - start < 500) {
       this.appRef.tick();
       numTicks++;
     }
-    const end = getDOM().performanceNow();
-    if (record && isProfilerAvailable) {
-      window.console.profileEnd(profileName);
+    const end = performance.now();
+    if (record && 'profileEnd' in console && typeof console.profileEnd === 'function') {
+      console.profileEnd(profileName);
     }
     const msPerTick = (end - start) / numTicks;
-    window.console.log(`ran ${numTicks} change detection cycles`);
-    window.console.log(`${msPerTick.toFixed(2)} ms per check`);
+    console.log(`ran ${numTicks} change detection cycles`);
+    console.log(`${msPerTick.toFixed(2)} ms per check`);
 
     return new ChangeDetectionPerfRecord(msPerTick, numTicks);
   }

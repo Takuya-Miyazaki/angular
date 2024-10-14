@@ -3,13 +3,20 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import * as ts from 'typescript';
+import ts from 'typescript';
 
-import {BazelAndG3Options, I18nOptions, LegacyNgcOptions, MiscOptions, NgcCompatibilityOptions, StrictTemplateOptions} from './public_options';
-
+import {
+  BazelAndG3Options,
+  DiagnosticOptions,
+  I18nOptions,
+  LegacyNgcOptions,
+  MiscOptions,
+  StrictTemplateOptions,
+  TargetOptions,
+} from './public_options';
 
 /**
  * Non-public options which are useful during testing of the compiler.
@@ -26,26 +33,93 @@ export interface TestOnlyOptions {
   _useHostForImportGeneration?: boolean;
 
   /**
-   * Turn on template type-checking in the Ivy compiler.
-   *
-   * This is an internal flag being used to roll out template type-checking in ngtsc. Turning it on
-   * by default before it's ready might break other users attempting to test the new compiler's
-   * behavior.
-   *
-   * @internal
+   * Enable the Language Service APIs for template type-checking for tests.
    */
-  ivyTemplateTypeCheck?: boolean;
+  _enableTemplateTypeChecker?: boolean;
+
+  /**
+   * Whether components that are poisoned should still be processed.
+   * E.g. for generation of type check blocks and diagnostics.
+   */
+  _compilePoisonedComponents?: boolean;
 
   /**
    * An option to enable ngtsc's internal performance tracing.
    *
-   * This should be a path to a JSON file where trace information will be written. An optional 'ts:'
-   * prefix will cause the trace to be written via the TS host instead of directly to the filesystem
-   * (not all hosts support this mode of operation).
+   * This should be a path to a JSON file where trace information will be written. This is sensitive
+   * to the compiler's working directory, and should likely be an absolute path.
    *
    * This is currently not exposed to users as the trace format is still unstable.
    */
   tracePerformance?: string;
+}
+
+/**
+ * Internal only options for compiler.
+ */
+export interface InternalOptions {
+  /**
+   * Enables the full usage of TestBed APIs within Angular unit tests by emitting class metadata
+   * for each Angular related class.
+   *
+   * This is only intended to be used by the Angular CLI.
+   * Defaults to true if not specified.
+   *
+   * @internal
+   */
+  supportTestBed?: boolean;
+
+  /**
+   * Enables the usage of the JIT compiler in combination with AOT compiled code by emitting
+   * selector scope information for NgModules.
+   *
+   * This is only intended to be used by the Angular CLI.
+   * Defaults to true if not specified.
+   *
+   * @internal
+   */
+  supportJitMode?: boolean;
+
+  /**
+   * Whether block syntax is enabled in the compiler. Defaults to true.
+   * Used in the language service to disable the new syntax for projects that aren't on v17.
+   *
+   * @internal
+   */
+  _enableBlockSyntax?: boolean;
+
+  /**
+   * Whether `@let` syntax is enabled in the compiler.
+   * Defaults to false while the feature is being developed.
+   *
+   * @internal
+   */
+  _enableLetSyntax?: boolean;
+
+  /**
+   * Enables the use of `<link>` elements for component styleUrls instead of inlining the file
+   * content.
+   * This option is intended to be used with a development server that processes and serves
+   * the files on-demand for an application.
+   *
+   * @internal
+   */
+  externalRuntimeStyles?: boolean;
+
+  /**
+   * Detected version of `@angular/core` in the workspace. Used by the
+   * compiler to adjust the output depending on the available symbols.
+   *
+   * @internal
+   */
+  _angularCoreVersion?: string;
+
+  /**
+   * Whether to enable the necessary code generation for hot module reloading.
+   *
+   * @internal
+   */
+  _enableHmr?: boolean;
 }
 
 /**
@@ -54,6 +128,20 @@ export interface TestOnlyOptions {
  *
  * Also includes a few miscellaneous options.
  */
-export interface NgCompilerOptions extends ts.CompilerOptions, LegacyNgcOptions, BazelAndG3Options,
-                                           NgcCompatibilityOptions, StrictTemplateOptions,
-                                           TestOnlyOptions, I18nOptions, MiscOptions {}
+export interface NgCompilerOptions
+  extends ts.CompilerOptions,
+    LegacyNgcOptions,
+    BazelAndG3Options,
+    DiagnosticOptions,
+    StrictTemplateOptions,
+    TestOnlyOptions,
+    I18nOptions,
+    TargetOptions,
+    InternalOptions,
+    MiscOptions {
+  // Replace the index signature type from `ts.CompilerOptions` as it is more strict than it needs
+  // to be and would conflict with some types from the other interfaces. This is ok because Angular
+  // compiler options are actually separate from TS compiler options in the `tsconfig.json` and we
+  // have full control over the structure of Angular's compiler options.
+  [prop: string]: any;
+}

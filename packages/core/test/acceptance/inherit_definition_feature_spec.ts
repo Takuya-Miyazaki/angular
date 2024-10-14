@@ -3,51 +3,62 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {state, style, trigger} from '@angular/animations';
-import {Component, ContentChildren, Directive, EventEmitter, HostBinding, HostListener, Input, OnChanges, Output, QueryList, ViewChildren} from '@angular/core';
-import {ivyEnabled} from '@angular/core/src/ivy_switch';
+import {
+  Component,
+  ContentChildren,
+  Directive,
+  EventEmitter,
+  HostBinding,
+  HostListener,
+  Input,
+  OnChanges,
+  Output,
+  QueryList,
+  ViewChildren,
+} from '@angular/core';
 import {getDirectiveDef} from '@angular/core/src/render3/definition';
 import {TestBed} from '@angular/core/testing';
 import {By} from '@angular/platform-browser';
 import {NoopAnimationsModule} from '@angular/platform-browser/animations';
-import {onlyInIvy} from '@angular/private/testing';
 
 describe('inheritance', () => {
-  onlyInIvy('View Engine does not provide this check')
-      .it('should throw when trying to inherit a component from a directive', () => {
-        @Component({
-          selector: 'my-comp',
-          template: '<div></div>',
-        })
-        class MyComponent {
-        }
+  it('should throw when trying to inherit a component from a directive', () => {
+    @Component({
+      selector: 'my-comp',
+      template: '<div></div>',
+      standalone: false,
+    })
+    class MyComponent {}
 
-        @Directive({
-          selector: '[my-dir]',
-        })
-        class MyDirective extends MyComponent {
-        }
+    @Directive({
+      selector: '[my-dir]',
+      standalone: false,
+    })
+    class MyDirective extends MyComponent {}
 
-        @Component({
-          template: `<div my-dir></div>`,
-        })
-        class App {
-        }
+    @Component({
+      template: `<div my-dir></div>`,
+      standalone: false,
+    })
+    class App {}
 
-        TestBed.configureTestingModule({
-          declarations: [App, MyComponent, MyDirective],
-        });
+    TestBed.configureTestingModule({
+      declarations: [App, MyComponent, MyDirective],
+    });
 
-        expect(() => {
-          TestBed.createComponent(App);
-        }).toThrowError('Directives cannot inherit Components');
-      });
+    expect(() => {
+      TestBed.createComponent(App);
+    }).toThrowError(
+      'NG0903: Directives cannot inherit Components. Directive MyDirective is attempting to extend component MyComponent',
+    );
+  });
 
   describe('multiple children', () => {
-    it('should ensure that multiple child classes don\'t cause multiple parent execution', () => {
+    it("should ensure that multiple child classes don't cause multiple parent execution", () => {
       // Assume this inheritance:
       //         Base
       //           |
@@ -66,7 +77,10 @@ describe('inheritance', () => {
       // especially an issue if we have a lot of sub-classes (as is common in component libraries)
       const log: string[] = [];
 
-      @Directive({selector: '[superDir]'})
+      @Directive({
+        selector: '[superDir]',
+        standalone: false,
+      })
       class BaseDirective {
         @HostBinding('style.background-color')
         get backgroundColor() {
@@ -75,7 +89,10 @@ describe('inheritance', () => {
         }
       }
 
-      @Directive({selector: '[superDir]'})
+      @Directive({
+        selector: '[superDir]',
+        standalone: false,
+      })
       class SuperDirective extends BaseDirective {
         @HostBinding('style.color')
         get color() {
@@ -84,7 +101,10 @@ describe('inheritance', () => {
         }
       }
 
-      @Directive({selector: '[subDir1]'})
+      @Directive({
+        selector: '[subDir1]',
+        standalone: false,
+      })
       class Sub1Directive extends SuperDirective {
         @HostBinding('style.height')
         get height() {
@@ -93,7 +113,10 @@ describe('inheritance', () => {
         }
       }
 
-      @Directive({selector: '[subDir2]'})
+      @Directive({
+        selector: '[subDir2]',
+        standalone: false,
+      })
       class Sub2Directive extends SuperDirective {
         @HostBinding('style.width')
         get width() {
@@ -102,27 +125,31 @@ describe('inheritance', () => {
         }
       }
 
-      @Component({template: `<div subDir1 subDir2></div>`})
-      class App {
-      }
+      @Component({
+        template: `<div subDir1 subDir2></div>`,
+        standalone: false,
+      })
+      class App {}
 
       TestBed.configureTestingModule({
         declarations: [App, Sub1Directive, Sub2Directive, SuperDirective],
       });
       const fixture = TestBed.createComponent(App);
-      fixture.detectChanges(false);  // Don't check for no changes (so that assertion does not need
-                                     // to worry about it.)
+      fixture.detectChanges(false); // Don't check for no changes (so that assertion does not need
+      // to worry about it.)
 
       expect(log).toEqual([
-        'Base.backgroundColor', 'Super.color', 'Sub1.height',  //
-        'Base.backgroundColor', 'Super.color', 'Sub2.width',   //
+        'Base.backgroundColor',
+        'Super.color',
+        'Sub1.height', //
+        'Base.backgroundColor',
+        'Super.color',
+        'Sub2.width', //
       ]);
-      if (ivyEnabled) {
-        expect(getDirectiveDef(BaseDirective)!.hostVars).toEqual(2);
-        expect(getDirectiveDef(SuperDirective)!.hostVars).toEqual(4);
-        expect(getDirectiveDef(Sub1Directive)!.hostVars).toEqual(6);
-        expect(getDirectiveDef(Sub2Directive)!.hostVars).toEqual(6);
-      }
+      expect(getDirectiveDef(BaseDirective)!.hostVars).toEqual(2);
+      expect(getDirectiveDef(SuperDirective)!.hostVars).toEqual(4);
+      expect(getDirectiveDef(Sub1Directive)!.hostVars).toEqual(6);
+      expect(getDirectiveDef(Sub2Directive)!.hostVars).toEqual(6);
     });
   });
 
@@ -130,7 +157,10 @@ describe('inheritance', () => {
     it('should be inherited when super is a directive', () => {
       const log: string[] = [];
 
-      @Directive({selector: '[superDir]'})
+      @Directive({
+        selector: '[superDir]',
+        standalone: false,
+      })
       class SuperDirective implements OnChanges {
         @Input() someInput = '';
 
@@ -139,13 +169,17 @@ describe('inheritance', () => {
         }
       }
 
-      @Directive({selector: '[subDir]'})
-      class SubDirective extends SuperDirective {
-      }
+      @Directive({
+        selector: '[subDir]',
+        standalone: false,
+      })
+      class SubDirective extends SuperDirective {}
 
-      @Component({template: `<div subDir [someInput]="1"></div>`})
-      class App {
-      }
+      @Component({
+        template: `<div subDir [someInput]="1"></div>`,
+        standalone: false,
+      })
+      class App {}
 
       TestBed.configureTestingModule({
         declarations: [App, SubDirective, SuperDirective],
@@ -165,14 +199,19 @@ describe('inheritance', () => {
         }
       }
 
-      @Directive({selector: '[subDir]'})
+      @Directive({
+        selector: '[subDir]',
+        standalone: false,
+      })
       class SubDirective extends SuperClass {
         @Input() someInput = '';
       }
 
-      @Component({template: `<div subDir [someInput]="1"></div>`})
-      class App {
-      }
+      @Component({
+        template: `<div subDir [someInput]="1"></div>`,
+        standalone: false,
+      })
+      class App {}
 
       TestBed.configureTestingModule({
         declarations: [App, SubDirective],
@@ -186,7 +225,10 @@ describe('inheritance', () => {
     it('should be inherited when super is a directive and grand-super is a directive', () => {
       const log: string[] = [];
 
-      @Directive({selector: '[grandSuperDir]'})
+      @Directive({
+        selector: '[grandSuperDir]',
+        standalone: false,
+      })
       class GrandSuperDirective implements OnChanges {
         @Input() someInput = '';
 
@@ -195,18 +237,23 @@ describe('inheritance', () => {
         }
       }
 
-      @Directive({selector: '[superDir]'})
-      class SuperDirective extends GrandSuperDirective {
-      }
+      @Directive({
+        selector: '[superDir]',
+        standalone: false,
+      })
+      class SuperDirective extends GrandSuperDirective {}
 
-      @Directive({selector: '[subDir]'})
-      class SubDirective extends SuperDirective {
-      }
+      @Directive({
+        selector: '[subDir]',
+        standalone: false,
+      })
+      class SubDirective extends SuperDirective {}
 
-
-      @Component({template: `<div subDir [someInput]="1"></div>`})
-      class App {
-      }
+      @Component({
+        template: `<div subDir [someInput]="1"></div>`,
+        standalone: false,
+      })
+      class App {}
 
       TestBed.configureTestingModule({
         declarations: [App, SubDirective, SuperDirective, GrandSuperDirective],
@@ -226,19 +273,25 @@ describe('inheritance', () => {
         }
       }
 
-      @Directive({selector: '[superDir]'})
+      @Directive({
+        selector: '[superDir]',
+        standalone: false,
+      })
       class SuperDirective extends GrandSuperClass {
         @Input() someInput = '';
       }
 
-      @Directive({selector: '[subDir]'})
-      class SubDirective extends SuperDirective {
-      }
+      @Directive({
+        selector: '[subDir]',
+        standalone: false,
+      })
+      class SubDirective extends SuperDirective {}
 
-
-      @Component({template: `<div subDir [someInput]="1"></div>`})
-      class App {
-      }
+      @Component({
+        template: `<div subDir [someInput]="1"></div>`,
+        standalone: false,
+      })
+      class App {}
 
       TestBed.configureTestingModule({
         declarations: [App, SubDirective, SuperDirective],
@@ -252,7 +305,10 @@ describe('inheritance', () => {
     it('should be inherited when super is a simple class and grand-super is a directive', () => {
       const log: string[] = [];
 
-      @Directive({selector: '[grandSuperDir]'})
+      @Directive({
+        selector: '[grandSuperDir]',
+        standalone: false,
+      })
       class GrandSuperDirective implements OnChanges {
         @Input() someInput = '';
 
@@ -263,14 +319,17 @@ describe('inheritance', () => {
 
       class SuperClass extends GrandSuperDirective {}
 
-      @Directive({selector: '[subDir]'})
-      class SubDirective extends SuperClass {
-      }
+      @Directive({
+        selector: '[subDir]',
+        standalone: false,
+      })
+      class SubDirective extends SuperClass {}
 
-
-      @Component({template: `<div subDir [someInput]="1"></div>`})
-      class App {
-      }
+      @Component({
+        template: `<div subDir [someInput]="1"></div>`,
+        standalone: false,
+      })
+      class App {}
 
       TestBed.configureTestingModule({
         declarations: [App, SubDirective, GrandSuperDirective],
@@ -292,15 +351,19 @@ describe('inheritance', () => {
 
       class SuperClass extends GrandSuperClass {}
 
-      @Directive({selector: '[subDir]'})
+      @Directive({
+        selector: '[subDir]',
+        standalone: false,
+      })
       class SubDirective extends SuperClass {
         @Input() someInput = '';
       }
 
-
-      @Component({template: `<div subDir [someInput]="1"></div>`})
-      class App {
-      }
+      @Component({
+        template: `<div subDir [someInput]="1"></div>`,
+        standalone: false,
+      })
+      class App {}
 
       TestBed.configureTestingModule({
         declarations: [App, SubDirective],
@@ -321,18 +384,25 @@ describe('inheritance', () => {
       }
 
       abstract class UndecoratedBase extends Base {
-        abstract input: any;
+        abstract override input: any;
         ngOnChanges() {
           changes++;
         }
       }
 
-      @Component({selector: 'my-comp', template: ''})
+      @Component({
+        selector: 'my-comp',
+        template: '',
+        standalone: false,
+      })
       class MyComp extends UndecoratedBase {
-        @Input() input: any;
+        @Input() override input: any;
       }
 
-      @Component({template: '<my-comp [input]="value"></my-comp>'})
+      @Component({
+        template: '<my-comp [input]="value"></my-comp>',
+        standalone: false,
+      })
       class App {
         value = 'hello';
       }
@@ -376,20 +446,22 @@ describe('inheritance', () => {
         }
       }
 
-      beforeEach(() => fired.length = 0);
+      beforeEach(() => (fired.length = 0));
 
       it('ngOnInit', () => {
         @Directive({
           selector: '[subDir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
-          ngOnInit() {
+          override ngOnInit() {
             fired.push('sub init');
           }
         }
 
         @Component({
           template: `<p *ngIf="showing" subDir></p>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -414,23 +486,23 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngDoCheck', () => {
         @Directive({
           selector: '[subDir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
-          ngDoCheck() {
+          override ngDoCheck() {
             fired.push('sub do check');
           }
         }
 
         @Component({
           template: `<p *ngIf="showing" subDir></p>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -455,23 +527,23 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterContentInit', () => {
         @Directive({
           selector: '[subDir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
-          ngAfterContentInit() {
+          override ngAfterContentInit() {
             fired.push('sub after content init');
           }
         }
 
         @Component({
           template: `<p *ngIf="showing" subDir></p>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -496,23 +568,23 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterContentChecked', () => {
         @Directive({
           selector: '[subDir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
-          ngAfterContentChecked() {
+          override ngAfterContentChecked() {
             fired.push('sub after content checked');
           }
         }
 
         @Component({
           template: `<p *ngIf="showing" subDir></p>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -537,23 +609,23 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterViewInit', () => {
         @Directive({
           selector: '[subDir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
-          ngAfterViewInit() {
+          override ngAfterViewInit() {
             fired.push('sub after view init');
           }
         }
 
         @Component({
           template: `<p *ngIf="showing" subDir></p>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -578,23 +650,23 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterViewChecked', () => {
         @Directive({
           selector: '[subDir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
-          ngAfterViewChecked() {
+          override ngAfterViewChecked() {
             fired.push('sub after view checked');
           }
         }
 
         @Component({
           template: `<p *ngIf="showing" subDir></p>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -619,23 +691,23 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngOnDestroy', () => {
         @Directive({
           selector: '[subDir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
-          ngOnDestroy() {
+          override ngOnDestroy() {
             fired.push('sub destroy');
           }
         }
 
         @Component({
           template: `<p *ngIf="showing" subDir></p>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -660,9 +732,7 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'sub destroy',
-        ]);
+        expect(fired).toEqual(['sub destroy']);
       });
     });
 
@@ -682,14 +752,18 @@ describe('inheritance', () => {
 
         @Directive({
           selector: '[sub-dir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
-          @Input() baz = '';
+          @Input() override baz = '';
 
           @Input() qux = '';
         }
 
-        @Component({template: `<p sub-dir [foo]="a" [bar]="b" [baz]="c" [qux]="d"></p>`})
+        @Component({
+          template: `<p sub-dir [foo]="a" [bar]="b" [baz]="c" [qux]="d"></p>`,
+          standalone: false,
+        })
         class App {
           a = 'a';
           b = 'b';
@@ -703,13 +777,74 @@ describe('inheritance', () => {
         const fixture = TestBed.createComponent(App);
         fixture.detectChanges();
 
-        const subDir =
-            fixture.debugElement.query(By.directive(SubDirective)).injector.get(SubDirective);
+        const subDir = fixture.debugElement
+          .query(By.directive(SubDirective))
+          .injector.get(SubDirective);
 
         expect(subDir.foo).toBe('a');
         expect(subDir.bar).toBe('b');
         expect(subDir.baz).toBe('c');
         expect(subDir.qux).toBe('d');
+      });
+
+      it('should not inherit transforms if inputs are re-declared', () => {
+        @Directive()
+        class Base {
+          @Input({transform: (v) => `${v}-transformed`}) someInput: string = '';
+        }
+
+        @Directive({
+          standalone: true,
+          selector: 'dir',
+          inputs: ['someInput'],
+        })
+        class ActualDir extends Base {}
+
+        @Component({
+          standalone: true,
+          imports: [ActualDir],
+          template: `<dir someInput="newValue">`,
+        })
+        class TestCmp {}
+
+        const fixture = TestBed.createComponent(TestCmp);
+        fixture.detectChanges();
+
+        const actualDir = fixture.debugElement
+          .query(By.directive(ActualDir))
+          .injector.get(ActualDir);
+
+        expect(actualDir.someInput).toEqual('newValue');
+      });
+
+      it('should inherit transforms if inputs are aliased', () => {
+        @Directive()
+        class Base {
+          @Input({transform: (v) => `${v}-transformed`, alias: 'publicName'}) fieldName: string =
+            '';
+        }
+
+        @Directive({
+          standalone: true,
+          selector: 'dir',
+        })
+        class ActualDir extends Base {}
+
+        @Component({
+          standalone: true,
+          imports: [ActualDir],
+          template: `<dir publicName="newValue">`,
+        })
+        class TestCmp {}
+
+        const fixture = TestBed.createComponent(TestCmp);
+        fixture.detectChanges();
+
+        const actualDir = fixture.debugElement
+          .query(By.directive(ActualDir))
+          .injector.get(ActualDir);
+
+        expect(actualDir.fieldName).toEqual('newValue-transformed');
       });
     });
 
@@ -726,6 +861,7 @@ describe('inheritance', () => {
 
         @Directive({
           selector: '[sub-dir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
           ngOnInit() {
@@ -736,7 +872,8 @@ describe('inheritance', () => {
         @Component({
           template: `
         <div sub-dir (foo)="handleFoo($event)"></div>
-      `
+      `,
+          standalone: false,
         })
         class App {
           foo = '';
@@ -769,17 +906,17 @@ describe('inheritance', () => {
 
         @Directive({
           selector: '[sub-dir]',
+          standalone: false,
         })
-        class SubDirective extends SuperDirective {
-        }
+        class SubDirective extends SuperDirective {}
 
         @Component({
           template: `
           <p sub-dir>test</p>
-        `
+        `,
+          standalone: false,
         })
-        class App {
-        }
+        class App {}
 
         TestBed.configureTestingModule({
           declarations: [App, SubDirective],
@@ -809,16 +946,16 @@ describe('inheritance', () => {
 
         @Directive({
           selector: '[sub-dir]',
+          standalone: false,
         })
-        class SubDirective extends SuperDirective {
-        }
+        class SubDirective extends SuperDirective {}
         @Component({
           template: `
         <p sub-dir superTitle="test">test</p>
-      `
+      `,
+          standalone: false,
         })
-        class App {
-        }
+        class App {}
 
         TestBed.configureTestingModule({
           declarations: [App, SubDirective],
@@ -837,9 +974,11 @@ describe('inheritance', () => {
       it('should inherit ContentChildren queries', () => {
         let foundQueryList: QueryList<ChildDir>;
 
-        @Directive({selector: '[child-dir]'})
-        class ChildDir {
-        }
+        @Directive({
+          selector: '[child-dir]',
+          standalone: false,
+        })
+        class ChildDir {}
 
         class SuperDirective {
           @ContentChildren(ChildDir) customDirs!: QueryList<ChildDir>;
@@ -847,6 +986,7 @@ describe('inheritance', () => {
 
         @Directive({
           selector: '[sub-dir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
           ngAfterViewInit() {
@@ -860,10 +1000,10 @@ describe('inheritance', () => {
           <li child-dir>one</li>
           <li child-dir>two</li>
         </ul>
-      `
+      `,
+          standalone: false,
         })
-        class App {
-        }
+        class App {}
 
         TestBed.configureTestingModule({
           declarations: [App, SubDirective, ChildDir],
@@ -875,31 +1015,27 @@ describe('inheritance', () => {
       });
     });
 
-    xdescribe(
-        'what happens when...',
-        () => {
-            // TODO: sub has Input and super has Output on same property
-            // TODO: sub has Input and super has HostBinding on same property
-            // TODO: sub has Input and super has ViewChild on same property
-            // TODO: sub has Input and super has ViewChildren on same property
-            // TODO: sub has Input and super has ContentChild on same property
-            // TODO: sub has Input and super has ContentChildren on same property
-            // TODO: sub has Output and super has HostBinding on same property
-            // TODO: sub has Output and super has ViewChild on same property
-            // TODO: sub has Output and super has ViewChildren on same property
-            // TODO: sub has Output and super has ContentChild on same property
-            // TODO: sub has Output and super has ContentChildren on same property
-            // TODO: sub has HostBinding and super has ViewChild on same property
-            // TODO: sub has HostBinding and super has ViewChildren on same property
-            // TODO: sub has HostBinding and super has ContentChild on same property
-            // TODO: sub has HostBinding and super has ContentChildren on same property
-            // TODO: sub has ViewChild and super has ViewChildren on same property
-            // TODO: sub has ViewChild and super has ContentChild on same property
-            // TODO: sub has ViewChild and super has ContentChildren on same property
-            // TODO: sub has ViewChildren and super has ContentChild on same property
-            // TODO: sub has ViewChildren and super has ContentChildren on same property
-            // TODO: sub has ContentChild and super has ContentChildren on same property
-        });
+    // TODO: sub has Input and super has Output on same property
+    // TODO: sub has Input and super has HostBinding on same property
+    // TODO: sub has Input and super has ViewChild on same property
+    // TODO: sub has Input and super has ViewChildren on same property
+    // TODO: sub has Input and super has ContentChild on same property
+    // TODO: sub has Input and super has ContentChildren on same property
+    // TODO: sub has Output and super has HostBinding on same property
+    // TODO: sub has Output and super has ViewChild on same property
+    // TODO: sub has Output and super has ViewChildren on same property
+    // TODO: sub has Output and super has ContentChild on same property
+    // TODO: sub has Output and super has ContentChildren on same property
+    // TODO: sub has HostBinding and super has ViewChild on same property
+    // TODO: sub has HostBinding and super has ViewChildren on same property
+    // TODO: sub has HostBinding and super has ContentChild on same property
+    // TODO: sub has HostBinding and super has ContentChildren on same property
+    // TODO: sub has ViewChild and super has ViewChildren on same property
+    // TODO: sub has ViewChild and super has ContentChild on same property
+    // TODO: sub has ViewChild and super has ContentChildren on same property
+    // TODO: sub has ViewChildren and super has ContentChild on same property
+    // TODO: sub has ViewChildren and super has ContentChildren on same property
+    // TODO: sub has ContentChild and super has ContentChildren on same property
   });
 
   describe('of a directive by another directive', () => {
@@ -911,6 +1047,7 @@ describe('inheritance', () => {
 
       @Directive({
         selector: '[super-dir]',
+        standalone: false,
       })
       class SuperDirective {
         ngOnInit() {
@@ -936,20 +1073,22 @@ describe('inheritance', () => {
         }
       }
 
-      beforeEach(() => fired.length = 0);
+      beforeEach(() => (fired.length = 0));
 
       it('ngOnInit', () => {
         @Directive({
           selector: '[subDir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
-          ngOnInit() {
+          override ngOnInit() {
             fired.push('sub init');
           }
         }
 
         @Component({
           template: `<p *ngIf="showing" subDir></p>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -974,23 +1113,23 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngDoCheck', () => {
         @Directive({
           selector: '[subDir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
-          ngDoCheck() {
+          override ngDoCheck() {
             fired.push('sub do check');
           }
         }
 
         @Component({
           template: `<p *ngIf="showing" subDir></p>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -1015,23 +1154,23 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterContentInit', () => {
         @Directive({
           selector: '[subDir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
-          ngAfterContentInit() {
+          override ngAfterContentInit() {
             fired.push('sub after content init');
           }
         }
 
         @Component({
           template: `<p *ngIf="showing" subDir></p>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -1056,23 +1195,23 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterContentChecked', () => {
         @Directive({
           selector: '[subDir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
-          ngAfterContentChecked() {
+          override ngAfterContentChecked() {
             fired.push('sub after content checked');
           }
         }
 
         @Component({
           template: `<p *ngIf="showing" subDir></p>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -1097,23 +1236,23 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterViewInit', () => {
         @Directive({
           selector: '[subDir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
-          ngAfterViewInit() {
+          override ngAfterViewInit() {
             fired.push('sub after view init');
           }
         }
 
         @Component({
           template: `<p *ngIf="showing" subDir></p>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -1138,23 +1277,23 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterViewChecked', () => {
         @Directive({
           selector: '[subDir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
-          ngAfterViewChecked() {
+          override ngAfterViewChecked() {
             fired.push('sub after view checked');
           }
         }
 
         @Component({
           template: `<p *ngIf="showing" subDir></p>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -1179,23 +1318,23 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngOnDestroy', () => {
         @Directive({
           selector: '[subDir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
-          ngOnDestroy() {
+          override ngOnDestroy() {
             fired.push('sub destroy');
           }
         }
 
         @Component({
           template: `<p *ngIf="showing" subDir></p>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -1220,9 +1359,7 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'sub destroy',
-        ]);
+        expect(fired).toEqual(['sub destroy']);
       });
     });
 
@@ -1232,7 +1369,10 @@ describe('inheritance', () => {
       // TODO: add test where super has an @Input('alias') on the property and sub has no alias
 
       it('should inherit inputs', () => {
-        @Directive({selector: '[super-dir]'})
+        @Directive({
+          selector: '[super-dir]',
+          standalone: false,
+        })
         class SuperDirective {
           @Input() foo = '';
 
@@ -1243,14 +1383,18 @@ describe('inheritance', () => {
 
         @Directive({
           selector: '[sub-dir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
-          @Input() baz = '';
+          @Input() override baz = '';
 
           @Input() qux = '';
         }
 
-        @Component({template: `<p sub-dir [foo]="a" [bar]="b" [baz]="c" [qux]="d"></p>`})
+        @Component({
+          template: `<p sub-dir [foo]="a" [bar]="b" [baz]="c" [qux]="d"></p>`,
+          standalone: false,
+        })
         class App {
           a = 'a';
           b = 'b';
@@ -1264,8 +1408,9 @@ describe('inheritance', () => {
         const fixture = TestBed.createComponent(App);
         fixture.detectChanges();
 
-        const subDir =
-            fixture.debugElement.query(By.directive(SubDirective)).injector.get(SubDirective);
+        const subDir = fixture.debugElement
+          .query(By.directive(SubDirective))
+          .injector.get(SubDirective);
 
         expect(subDir.foo).toBe('a');
         expect(subDir.bar).toBe('b');
@@ -1283,6 +1428,7 @@ describe('inheritance', () => {
       it('should inherit outputs', () => {
         @Directive({
           selector: '[super-dir]',
+          standalone: false,
         })
         class SuperDirective {
           @Output() foo = new EventEmitter<string>();
@@ -1290,6 +1436,7 @@ describe('inheritance', () => {
 
         @Directive({
           selector: '[sub-dir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
           ngOnInit() {
@@ -1300,7 +1447,8 @@ describe('inheritance', () => {
         @Component({
           template: `
         <div sub-dir (foo)="handleFoo($event)"></div>
-      `
+      `,
+          standalone: false,
         })
         class App {
           foo = '';
@@ -1327,6 +1475,7 @@ describe('inheritance', () => {
       it('should compose host bindings for styles', () => {
         @Directive({
           selector: '[super-dir]',
+          standalone: false,
         })
         class SuperDirective {
           @HostBinding('style.color') color = 'red';
@@ -1336,17 +1485,17 @@ describe('inheritance', () => {
 
         @Directive({
           selector: '[sub-dir]',
+          standalone: false,
         })
-        class SubDirective extends SuperDirective {
-        }
+        class SubDirective extends SuperDirective {}
 
         @Component({
           template: `
         <p sub-dir>test</p>
-      `
+      `,
+          standalone: false,
         })
-        class App {
-        }
+        class App {}
 
         TestBed.configureTestingModule({
           declarations: [App, SubDirective, SuperDirective],
@@ -1367,6 +1516,7 @@ describe('inheritance', () => {
       it('should compose host bindings (non-style related)', () => {
         @Directive({
           selector: '[super-dir]',
+          standalone: false,
         })
         class SuperDirective {
           @HostBinding('title')
@@ -1379,16 +1529,16 @@ describe('inheritance', () => {
 
         @Directive({
           selector: '[sub-dir]',
+          standalone: false,
         })
-        class SubDirective extends SuperDirective {
-        }
+        class SubDirective extends SuperDirective {}
         @Component({
           template: `
         <p sub-dir superTitle="test">test</p>
-      `
+      `,
+          standalone: false,
         })
-        class App {
-        }
+        class App {}
 
         TestBed.configureTestingModule({
           declarations: [App, SubDirective, SuperDirective],
@@ -1404,12 +1554,15 @@ describe('inheritance', () => {
     it('should inherit ContentChildren queries', () => {
       let foundQueryList: QueryList<ChildDir>;
 
-      @Directive({selector: '[child-dir]'})
-      class ChildDir {
-      }
+      @Directive({
+        selector: '[child-dir]',
+        standalone: false,
+      })
+      class ChildDir {}
 
       @Directive({
         selector: '[super-dir]',
+        standalone: false,
       })
       class SuperDirective {
         @ContentChildren(ChildDir) customDirs!: QueryList<ChildDir>;
@@ -1417,6 +1570,7 @@ describe('inheritance', () => {
 
       @Directive({
         selector: '[sub-dir]',
+        standalone: false,
       })
       class SubDirective extends SuperDirective {
         ngAfterViewInit() {
@@ -1430,10 +1584,10 @@ describe('inheritance', () => {
           <li child-dir>one</li>
           <li child-dir>two</li>
         </ul>
-      `
+      `,
+        standalone: false,
       })
-      class App {
-      }
+      class App {}
 
       TestBed.configureTestingModule({
         declarations: [App, SubDirective, ChildDir, SuperDirective],
@@ -1444,31 +1598,27 @@ describe('inheritance', () => {
       expect(foundQueryList!.length).toBe(2);
     });
 
-    xdescribe(
-        'what happens when...',
-        () => {
-            // TODO: sub has Input and super has Output on same property
-            // TODO: sub has Input and super has HostBinding on same property
-            // TODO: sub has Input and super has ViewChild on same property
-            // TODO: sub has Input and super has ViewChildren on same property
-            // TODO: sub has Input and super has ContentChild on same property
-            // TODO: sub has Input and super has ContentChildren on same property
-            // TODO: sub has Output and super has HostBinding on same property
-            // TODO: sub has Output and super has ViewChild on same property
-            // TODO: sub has Output and super has ViewChildren on same property
-            // TODO: sub has Output and super has ContentChild on same property
-            // TODO: sub has Output and super has ContentChildren on same property
-            // TODO: sub has HostBinding and super has ViewChild on same property
-            // TODO: sub has HostBinding and super has ViewChildren on same property
-            // TODO: sub has HostBinding and super has ContentChild on same property
-            // TODO: sub has HostBinding and super has ContentChildren on same property
-            // TODO: sub has ViewChild and super has ViewChildren on same property
-            // TODO: sub has ViewChild and super has ContentChild on same property
-            // TODO: sub has ViewChild and super has ContentChildren on same property
-            // TODO: sub has ViewChildren and super has ContentChild on same property
-            // TODO: sub has ViewChildren and super has ContentChildren on same property
-            // TODO: sub has ContentChild and super has ContentChildren on same property
-        });
+    // TODO: sub has Input and super has Output on same property
+    // TODO: sub has Input and super has HostBinding on same property
+    // TODO: sub has Input and super has ViewChild on same property
+    // TODO: sub has Input and super has ViewChildren on same property
+    // TODO: sub has Input and super has ContentChild on same property
+    // TODO: sub has Input and super has ContentChildren on same property
+    // TODO: sub has Output and super has HostBinding on same property
+    // TODO: sub has Output and super has ViewChild on same property
+    // TODO: sub has Output and super has ViewChildren on same property
+    // TODO: sub has Output and super has ContentChild on same property
+    // TODO: sub has Output and super has ContentChildren on same property
+    // TODO: sub has HostBinding and super has ViewChild on same property
+    // TODO: sub has HostBinding and super has ViewChildren on same property
+    // TODO: sub has HostBinding and super has ContentChild on same property
+    // TODO: sub has HostBinding and super has ContentChildren on same property
+    // TODO: sub has ViewChild and super has ViewChildren on same property
+    // TODO: sub has ViewChild and super has ContentChild on same property
+    // TODO: sub has ViewChild and super has ContentChildren on same property
+    // TODO: sub has ViewChildren and super has ContentChild on same property
+    // TODO: sub has ViewChildren and super has ContentChildren on same property
+    // TODO: sub has ContentChild and super has ContentChildren on same property
   });
 
   describe('of a directive by a bare class then by another directive', () => {
@@ -1479,6 +1629,7 @@ describe('inheritance', () => {
 
       @Directive({
         selector: '[super-dir]',
+        standalone: false,
       })
       class SuperSuperDirective {
         ngOnInit() {
@@ -1506,20 +1657,22 @@ describe('inheritance', () => {
 
       class SuperDirective extends SuperSuperDirective {}
 
-      beforeEach(() => fired.length = 0);
+      beforeEach(() => (fired.length = 0));
 
       it('ngOnInit', () => {
         @Directive({
           selector: '[subDir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
-          ngOnInit() {
+          override ngOnInit() {
             fired.push('sub init');
           }
         }
 
         @Component({
           template: `<p *ngIf="showing" subDir></p>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -1544,23 +1697,23 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngDoCheck', () => {
         @Directive({
           selector: '[subDir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
-          ngDoCheck() {
+          override ngDoCheck() {
             fired.push('sub do check');
           }
         }
 
         @Component({
           template: `<p *ngIf="showing" subDir></p>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -1585,23 +1738,23 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterContentInit', () => {
         @Directive({
           selector: '[subDir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
-          ngAfterContentInit() {
+          override ngAfterContentInit() {
             fired.push('sub after content init');
           }
         }
 
         @Component({
           template: `<p *ngIf="showing" subDir></p>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -1626,23 +1779,23 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterContentChecked', () => {
         @Directive({
           selector: '[subDir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
-          ngAfterContentChecked() {
+          override ngAfterContentChecked() {
             fired.push('sub after content checked');
           }
         }
 
         @Component({
           template: `<p *ngIf="showing" subDir></p>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -1667,23 +1820,23 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterViewInit', () => {
         @Directive({
           selector: '[subDir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
-          ngAfterViewInit() {
+          override ngAfterViewInit() {
             fired.push('sub after view init');
           }
         }
 
         @Component({
           template: `<p *ngIf="showing" subDir></p>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -1708,23 +1861,23 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterViewChecked', () => {
         @Directive({
           selector: '[subDir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
-          ngAfterViewChecked() {
+          override ngAfterViewChecked() {
             fired.push('sub after view checked');
           }
         }
 
         @Component({
           template: `<p *ngIf="showing" subDir></p>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -1749,23 +1902,23 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngOnDestroy', () => {
         @Directive({
           selector: '[subDir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
-          ngOnDestroy() {
+          override ngOnDestroy() {
             fired.push('sub destroy');
           }
         }
 
         @Component({
           template: `<p *ngIf="showing" subDir></p>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -1790,9 +1943,7 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'sub destroy',
-        ]);
+        expect(fired).toEqual(['sub destroy']);
       });
     });
 
@@ -1802,7 +1953,10 @@ describe('inheritance', () => {
       // TODO: add test where super has an @Input('alias') on the property and sub has no alias
 
       it('should inherit inputs', () => {
-        @Directive({selector: '[super-dir]'})
+        @Directive({
+          selector: '[super-dir]',
+          standalone: false,
+        })
         class SuperSuperDirective {
           @Input() foo = '';
 
@@ -1815,9 +1969,10 @@ describe('inheritance', () => {
 
         @Directive({
           selector: '[sub-dir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
-          @Input() baz = '';
+          @Input() override baz = '';
 
           @Input() qux = '';
         }
@@ -1825,6 +1980,7 @@ describe('inheritance', () => {
         @Component({
           selector: 'my-app',
           template: `<p sub-dir [foo]="a" [bar]="b" [baz]="c" [qux]="d"></p>`,
+          standalone: false,
         })
         class App {
           a = 'a';
@@ -1839,8 +1995,9 @@ describe('inheritance', () => {
         const fixture = TestBed.createComponent(App);
         fixture.detectChanges();
 
-        const subDir =
-            fixture.debugElement.query(By.directive(SubDirective)).injector.get(SubDirective);
+        const subDir = fixture.debugElement
+          .query(By.directive(SubDirective))
+          .injector.get(SubDirective);
 
         expect(subDir.foo).toBe('a');
         expect(subDir.bar).toBe('b');
@@ -1858,6 +2015,7 @@ describe('inheritance', () => {
       it('should inherit outputs', () => {
         @Directive({
           selector: '[super-dir]',
+          standalone: false,
         })
         class SuperSuperDirective {
           @Output() foo = new EventEmitter<string>();
@@ -1869,6 +2027,7 @@ describe('inheritance', () => {
 
         @Directive({
           selector: '[sub-dir]',
+          standalone: false,
         })
         class SubDirective extends SuperDirective {
           ngOnInit() {
@@ -1880,7 +2039,8 @@ describe('inheritance', () => {
         @Component({
           template: `
           <div sub-dir (foo)="handleFoo($event)" (bar)="handleBar($event)"></div>
-        `
+        `,
+          standalone: false,
         })
         class App {
           foo = '';
@@ -1914,6 +2074,7 @@ describe('inheritance', () => {
       it('should compose host bindings for styles', () => {
         @Directive({
           selector: '[super-dir]',
+          standalone: false,
         })
         class SuperSuperDirective {
           @HostBinding('style.color') color = 'red';
@@ -1925,17 +2086,17 @@ describe('inheritance', () => {
 
         @Directive({
           selector: '[sub-dir]',
+          standalone: false,
         })
-        class SubDirective extends SuperDirective {
-        }
+        class SubDirective extends SuperDirective {}
 
         @Component({
           template: `
           <p sub-dir>test</p>
-        `
+        `,
+          standalone: false,
         })
-        class App {
-        }
+        class App {}
 
         TestBed.configureTestingModule({
           declarations: [App, SubDirective, SuperDirective, SuperSuperDirective],
@@ -1956,6 +2117,7 @@ describe('inheritance', () => {
       it('should compose host bindings (non-style related)', () => {
         @Directive({
           selector: '[super-dir]',
+          standalone: false,
         })
         class SuperSuperDirective {
           @HostBinding('title')
@@ -1977,24 +2139,25 @@ describe('inheritance', () => {
 
         @Directive({
           selector: '[sub-dir]',
+          standalone: false,
         })
-        class SubDirective extends SuperDirective {
-        }
+        class SubDirective extends SuperDirective {}
         @Component({
           template: `
         <p sub-dir superTitle="test1" superAccessKey="test2">test</p>
-      `
+      `,
+          standalone: false,
         })
-        class App {
-        }
+        class App {}
 
         TestBed.configureTestingModule({
           declarations: [App, SubDirective, SuperDirective, SuperSuperDirective],
         });
         const fixture = TestBed.createComponent(App);
         fixture.detectChanges();
-        const p: HTMLParagraphElement =
-            fixture.debugElement.query(By.directive(SubDirective)).nativeElement;
+        const p: HTMLParagraphElement = fixture.debugElement.query(
+          By.directive(SubDirective),
+        ).nativeElement;
 
         expect(p.title).toBe('test1!!!');
         expect(p.accessKey).toBe('test2???');
@@ -2005,16 +2168,21 @@ describe('inheritance', () => {
       let foundChildDir1s: QueryList<ChildDir1>;
       let foundChildDir2s: QueryList<ChildDir2>;
 
-      @Directive({selector: '[child-dir-one]'})
-      class ChildDir1 {
-      }
+      @Directive({
+        selector: '[child-dir-one]',
+        standalone: false,
+      })
+      class ChildDir1 {}
 
-      @Directive({selector: '[child-dir-two]'})
-      class ChildDir2 {
-      }
+      @Directive({
+        selector: '[child-dir-two]',
+        standalone: false,
+      })
+      class ChildDir2 {}
 
       @Directive({
         selector: '[super-dir]',
+        standalone: false,
       })
       class SuperSuperDirective {
         @ContentChildren(ChildDir1) childDir1s!: QueryList<ChildDir1>;
@@ -2026,6 +2194,7 @@ describe('inheritance', () => {
 
       @Directive({
         selector: '[sub-dir]',
+        standalone: false,
       })
       class SubDirective extends SuperDirective {
         ngAfterViewInit() {
@@ -2041,10 +2210,10 @@ describe('inheritance', () => {
           <li child-dir-one>two</li>
           <li child-dir-two>three</li>
         </ul>
-      `
+      `,
+        standalone: false,
       })
-      class App {
-      }
+      class App {}
 
       TestBed.configureTestingModule({
         declarations: [App, SubDirective, ChildDir1, SuperDirective],
@@ -2056,31 +2225,27 @@ describe('inheritance', () => {
       expect(foundChildDir2s!.length).toBe(2);
     });
 
-    xdescribe(
-        'what happens when...',
-        () => {
-            // TODO: sub has Input and super has Output on same property
-            // TODO: sub has Input and super has HostBinding on same property
-            // TODO: sub has Input and super has ViewChild on same property
-            // TODO: sub has Input and super has ViewChildren on same property
-            // TODO: sub has Input and super has ContentChild on same property
-            // TODO: sub has Input and super has ContentChildren on same property
-            // TODO: sub has Output and super has HostBinding on same property
-            // TODO: sub has Output and super has ViewChild on same property
-            // TODO: sub has Output and super has ViewChildren on same property
-            // TODO: sub has Output and super has ContentChild on same property
-            // TODO: sub has Output and super has ContentChildren on same property
-            // TODO: sub has HostBinding and super has ViewChild on same property
-            // TODO: sub has HostBinding and super has ViewChildren on same property
-            // TODO: sub has HostBinding and super has ContentChild on same property
-            // TODO: sub has HostBinding and super has ContentChildren on same property
-            // TODO: sub has ViewChild and super has ViewChildren on same property
-            // TODO: sub has ViewChild and super has ContentChild on same property
-            // TODO: sub has ViewChild and super has ContentChildren on same property
-            // TODO: sub has ViewChildren and super has ContentChild on same property
-            // TODO: sub has ViewChildren and super has ContentChildren on same property
-            // TODO: sub has ContentChild and super has ContentChildren on same property
-        });
+    // TODO: sub has Input and super has Output on same property
+    // TODO: sub has Input and super has HostBinding on same property
+    // TODO: sub has Input and super has ViewChild on same property
+    // TODO: sub has Input and super has ViewChildren on same property
+    // TODO: sub has Input and super has ContentChild on same property
+    // TODO: sub has Input and super has ContentChildren on same property
+    // TODO: sub has Output and super has HostBinding on same property
+    // TODO: sub has Output and super has ViewChild on same property
+    // TODO: sub has Output and super has ViewChildren on same property
+    // TODO: sub has Output and super has ContentChild on same property
+    // TODO: sub has Output and super has ContentChildren on same property
+    // TODO: sub has HostBinding and super has ViewChild on same property
+    // TODO: sub has HostBinding and super has ViewChildren on same property
+    // TODO: sub has HostBinding and super has ContentChild on same property
+    // TODO: sub has HostBinding and super has ContentChildren on same property
+    // TODO: sub has ViewChild and super has ViewChildren on same property
+    // TODO: sub has ViewChild and super has ContentChild on same property
+    // TODO: sub has ViewChild and super has ContentChildren on same property
+    // TODO: sub has ViewChildren and super has ContentChild on same property
+    // TODO: sub has ViewChildren and super has ContentChildren on same property
+    // TODO: sub has ContentChild and super has ContentChildren on same property
   });
 
   describe('of bare super class by a component', () => {
@@ -2113,18 +2278,23 @@ describe('inheritance', () => {
         }
       }
 
-      beforeEach(() => fired.length = 0);
+      beforeEach(() => (fired.length = 0));
 
       it('ngOnInit', () => {
-        @Component({selector: 'my-comp', template: `<p>test</p>`})
+        @Component({
+          selector: 'my-comp',
+          template: `<p>test</p>`,
+          standalone: false,
+        })
         class MyComponent extends SuperComponent {
-          ngOnInit() {
+          override ngOnInit() {
             fired.push('sub init');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -2149,23 +2319,23 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngDoCheck', () => {
         @Directive({
           selector: 'my-comp',
+          standalone: false,
         })
         class MyComponent extends SuperComponent {
-          ngDoCheck() {
+          override ngDoCheck() {
             fired.push('sub do check');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -2190,24 +2360,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterContentInit', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperComponent {
-          ngAfterContentInit() {
+          override ngAfterContentInit() {
             fired.push('sub after content init');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -2232,24 +2402,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterContentChecked', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperComponent {
-          ngAfterContentChecked() {
+          override ngAfterContentChecked() {
             fired.push('sub after content checked');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -2274,24 +2444,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterViewInit', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperComponent {
-          ngAfterViewInit() {
+          override ngAfterViewInit() {
             fired.push('sub after view init');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -2316,24 +2486,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterViewChecked', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperComponent {
-          ngAfterViewChecked() {
+          override ngAfterViewChecked() {
             fired.push('sub after view checked');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -2358,24 +2528,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngOnDestroy', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperComponent {
-          ngOnDestroy() {
+          override ngOnDestroy() {
             fired.push('sub destroy');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -2400,9 +2570,7 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'sub destroy',
-        ]);
+        expect(fired).toEqual(['sub destroy']);
       });
     });
 
@@ -2420,14 +2588,21 @@ describe('inheritance', () => {
           @Input() baz = '';
         }
 
-        @Component({selector: 'my-comp', template: `<p>test</p>`})
+        @Component({
+          selector: 'my-comp',
+          template: `<p>test</p>`,
+          standalone: false,
+        })
         class MyComponent extends SuperComponent {
-          @Input() baz = '';
+          @Input() override baz = '';
 
           @Input() qux = '';
         }
 
-        @Component({template: `<my-comp [foo]="a" [bar]="b" [baz]="c" [qux]="d"></my-comp>`})
+        @Component({
+          template: `<my-comp [foo]="a" [bar]="b" [baz]="c" [qux]="d"></my-comp>`,
+          standalone: false,
+        })
         class App {
           a = 'a';
           b = 'b';
@@ -2441,8 +2616,9 @@ describe('inheritance', () => {
         const fixture = TestBed.createComponent(App);
         fixture.detectChanges();
 
-        const subDir: MyComponent =
-            fixture.debugElement.query(By.directive(MyComponent)).componentInstance;
+        const subDir: MyComponent = fixture.debugElement.query(
+          By.directive(MyComponent),
+        ).componentInstance;
 
         expect(subDir.foo).toEqual('a');
         expect(subDir.bar).toEqual('b');
@@ -2465,6 +2641,7 @@ describe('inheritance', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperComponent {
           ngOnInit() {
@@ -2475,7 +2652,8 @@ describe('inheritance', () => {
         @Component({
           template: `
           <my-comp (foo)="handleFoo($event)"></my-comp>
-        `
+        `,
+          standalone: false,
         })
         class App {
           foo = '';
@@ -2509,17 +2687,17 @@ describe('inheritance', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
-        class MyComponent extends SuperComponent {
-        }
+        class MyComponent extends SuperComponent {}
 
         @Component({
           template: `
           <my-comp>test</my-comp>
-        `
+        `,
+          standalone: false,
         })
-        class App {
-        }
+        class App {}
 
         TestBed.configureTestingModule({
           declarations: [App, MyComponent],
@@ -2550,16 +2728,16 @@ describe('inheritance', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
-        class MyComponent extends SuperComponent {
-        }
+        class MyComponent extends SuperComponent {}
         @Component({
           template: `
         <my-comp superTitle="test">test</my-comp>
-      `
+      `,
+          standalone: false,
         })
-        class App {
-        }
+        class App {}
 
         TestBed.configureTestingModule({
           declarations: [App, MyComponent],
@@ -2575,15 +2753,21 @@ describe('inheritance', () => {
     it('should inherit ContentChildren queries', () => {
       let foundQueryList: QueryList<ChildDir>;
 
-      @Directive({selector: '[child-dir]'})
-      class ChildDir {
-      }
+      @Directive({
+        selector: '[child-dir]',
+        standalone: false,
+      })
+      class ChildDir {}
 
       class SuperComponent {
         @ContentChildren(ChildDir) customDirs!: QueryList<ChildDir>;
       }
 
-      @Component({selector: 'my-comp', template: `<ul><ng-content></ng-content></ul>`})
+      @Component({
+        selector: 'my-comp',
+        template: `<ul><ng-content></ng-content></ul>`,
+        standalone: false,
+      })
       class MyComponent extends SuperComponent {
         ngAfterViewInit() {
           foundQueryList = this.customDirs;
@@ -2596,10 +2780,10 @@ describe('inheritance', () => {
           <li child-dir>one</li>
           <li child-dir>two</li>
         </my-comp>
-      `
+      `,
+        standalone: false,
       })
-      class App {
-      }
+      class App {}
 
       TestBed.configureTestingModule({
         declarations: [App, MyComponent, ChildDir],
@@ -2610,31 +2794,27 @@ describe('inheritance', () => {
       expect(foundQueryList!.length).toBe(2);
     });
 
-    xdescribe(
-        'what happens when...',
-        () => {
-            // TODO: sub has Input and super has Output on same property
-            // TODO: sub has Input and super has HostBinding on same property
-            // TODO: sub has Input and super has ViewChild on same property
-            // TODO: sub has Input and super has ViewChildren on same property
-            // TODO: sub has Input and super has ContentChild on same property
-            // TODO: sub has Input and super has ContentChildren on same property
-            // TODO: sub has Output and super has HostBinding on same property
-            // TODO: sub has Output and super has ViewChild on same property
-            // TODO: sub has Output and super has ViewChildren on same property
-            // TODO: sub has Output and super has ContentChild on same property
-            // TODO: sub has Output and super has ContentChildren on same property
-            // TODO: sub has HostBinding and super has ViewChild on same property
-            // TODO: sub has HostBinding and super has ViewChildren on same property
-            // TODO: sub has HostBinding and super has ContentChild on same property
-            // TODO: sub has HostBinding and super has ContentChildren on same property
-            // TODO: sub has ViewChild and super has ViewChildren on same property
-            // TODO: sub has ViewChild and super has ContentChild on same property
-            // TODO: sub has ViewChild and super has ContentChildren on same property
-            // TODO: sub has ViewChildren and super has ContentChild on same property
-            // TODO: sub has ViewChildren and super has ContentChildren on same property
-            // TODO: sub has ContentChild and super has ContentChildren on same property
-        });
+    // TODO: sub has Input and super has Output on same property
+    // TODO: sub has Input and super has HostBinding on same property
+    // TODO: sub has Input and super has ViewChild on same property
+    // TODO: sub has Input and super has ViewChildren on same property
+    // TODO: sub has Input and super has ContentChild on same property
+    // TODO: sub has Input and super has ContentChildren on same property
+    // TODO: sub has Output and super has HostBinding on same property
+    // TODO: sub has Output and super has ViewChild on same property
+    // TODO: sub has Output and super has ViewChildren on same property
+    // TODO: sub has Output and super has ContentChild on same property
+    // TODO: sub has Output and super has ContentChildren on same property
+    // TODO: sub has HostBinding and super has ViewChild on same property
+    // TODO: sub has HostBinding and super has ViewChildren on same property
+    // TODO: sub has HostBinding and super has ContentChild on same property
+    // TODO: sub has HostBinding and super has ContentChildren on same property
+    // TODO: sub has ViewChild and super has ViewChildren on same property
+    // TODO: sub has ViewChild and super has ContentChild on same property
+    // TODO: sub has ViewChild and super has ContentChildren on same property
+    // TODO: sub has ViewChildren and super has ContentChild on same property
+    // TODO: sub has ViewChildren and super has ContentChildren on same property
+    // TODO: sub has ContentChild and super has ContentChildren on same property
   });
 
   describe('of a directive inherited by a component', () => {
@@ -2645,6 +2825,7 @@ describe('inheritance', () => {
 
       @Directive({
         selector: '[super-dir]',
+        standalone: false,
       })
       class SuperDirective {
         ngOnInit() {
@@ -2670,18 +2851,23 @@ describe('inheritance', () => {
         }
       }
 
-      beforeEach(() => fired.length = 0);
+      beforeEach(() => (fired.length = 0));
 
       it('ngOnInit', () => {
-        @Component({selector: 'my-comp', template: `<p>test</p>`})
+        @Component({
+          selector: 'my-comp',
+          template: `<p>test</p>`,
+          standalone: false,
+        })
         class MyComponent extends SuperDirective {
-          ngOnInit() {
+          override ngOnInit() {
             fired.push('sub init');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -2706,24 +2892,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngDoCheck', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperDirective {
-          ngDoCheck() {
+          override ngDoCheck() {
             fired.push('sub do check');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -2748,24 +2934,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterContentInit', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperDirective {
-          ngAfterContentInit() {
+          override ngAfterContentInit() {
             fired.push('sub after content init');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -2790,24 +2976,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterContentChecked', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperDirective {
-          ngAfterContentChecked() {
+          override ngAfterContentChecked() {
             fired.push('sub after content checked');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -2832,24 +3018,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterViewInit', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperDirective {
-          ngAfterViewInit() {
+          override ngAfterViewInit() {
             fired.push('sub after view init');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -2874,24 +3060,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterViewChecked', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperDirective {
-          ngAfterViewChecked() {
+          override ngAfterViewChecked() {
             fired.push('sub after view checked');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -2916,24 +3102,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngOnDestroy', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperDirective {
-          ngOnDestroy() {
+          override ngOnDestroy() {
             fired.push('sub destroy');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -2958,9 +3144,7 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'sub destroy',
-        ]);
+        expect(fired).toEqual(['sub destroy']);
       });
     });
 
@@ -2972,6 +3156,7 @@ describe('inheritance', () => {
       it('should inherit inputs', () => {
         @Directive({
           selector: '[super-dir]',
+          standalone: false,
         })
         class SuperDirective {
           @Input() foo = '';
@@ -2981,14 +3166,21 @@ describe('inheritance', () => {
           @Input() baz = '';
         }
 
-        @Component({selector: 'my-comp', template: `<p>test</p>`})
+        @Component({
+          selector: 'my-comp',
+          template: `<p>test</p>`,
+          standalone: false,
+        })
         class MyComponent extends SuperDirective {
-          @Input() baz = '';
+          @Input() override baz = '';
 
           @Input() qux = '';
         }
 
-        @Component({template: `<my-comp [foo]="a" [bar]="b" [baz]="c" [qux]="d"></my-comp>`})
+        @Component({
+          template: `<my-comp [foo]="a" [bar]="b" [baz]="c" [qux]="d"></my-comp>`,
+          standalone: false,
+        })
         class App {
           a = 'a';
           b = 'b';
@@ -3002,8 +3194,9 @@ describe('inheritance', () => {
         const fixture = TestBed.createComponent(App);
         fixture.detectChanges();
 
-        const subDir: MyComponent =
-            fixture.debugElement.query(By.directive(MyComponent)).componentInstance;
+        const subDir: MyComponent = fixture.debugElement.query(
+          By.directive(MyComponent),
+        ).componentInstance;
 
         expect(subDir.foo).toEqual('a');
         expect(subDir.bar).toEqual('b');
@@ -3021,6 +3214,7 @@ describe('inheritance', () => {
       it('should inherit outputs', () => {
         @Directive({
           selector: '[super-dir]',
+          standalone: false,
         })
         class SuperDirective {
           @Output() foo = new EventEmitter<string>();
@@ -3029,6 +3223,7 @@ describe('inheritance', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperDirective {
           ngOnInit() {
@@ -3039,7 +3234,8 @@ describe('inheritance', () => {
         @Component({
           template: `
           <my-comp (foo)="handleFoo($event)"></my-comp>
-        `
+        `,
+          standalone: false,
         })
         class App {
           foo = '';
@@ -3066,6 +3262,7 @@ describe('inheritance', () => {
       it('should compose host bindings for styles', () => {
         @Directive({
           selector: '[super-dir]',
+          standalone: false,
         })
         class SuperDirective {
           @HostBinding('style.color') color = 'red';
@@ -3076,17 +3273,17 @@ describe('inheritance', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
-        class MyComponent extends SuperDirective {
-        }
+        class MyComponent extends SuperDirective {}
 
         @Component({
           template: `
           <my-comp>test</my-comp>
-        `
+        `,
+          standalone: false,
         })
-        class App {
-        }
+        class App {}
 
         TestBed.configureTestingModule({
           declarations: [App, MyComponent, SuperDirective],
@@ -3107,6 +3304,7 @@ describe('inheritance', () => {
       it('should compose host bindings (non-style related)', () => {
         @Directive({
           selector: '[super-dir]',
+          standalone: false,
         })
         class SuperDirective {
           @HostBinding('title')
@@ -3120,16 +3318,16 @@ describe('inheritance', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
-        class MyComponent extends SuperDirective {
-        }
+        class MyComponent extends SuperDirective {}
         @Component({
           template: `
         <my-comp superTitle="test">test</my-comp>
-      `
+      `,
+          standalone: false,
         })
-        class App {
-        }
+        class App {}
 
         TestBed.configureTestingModule({
           declarations: [App, MyComponent],
@@ -3145,18 +3343,25 @@ describe('inheritance', () => {
     it('should inherit ContentChildren queries', () => {
       let foundQueryList: QueryList<ChildDir>;
 
-      @Directive({selector: '[child-dir]'})
-      class ChildDir {
-      }
+      @Directive({
+        selector: '[child-dir]',
+        standalone: false,
+      })
+      class ChildDir {}
 
       @Directive({
         selector: '[super-dir]',
+        standalone: false,
       })
       class SuperDirective {
         @ContentChildren(ChildDir) customDirs!: QueryList<ChildDir>;
       }
 
-      @Component({selector: 'my-comp', template: `<ul><ng-content></ng-content></ul>`})
+      @Component({
+        selector: 'my-comp',
+        template: `<ul><ng-content></ng-content></ul>`,
+        standalone: false,
+      })
       class MyComponent extends SuperDirective {
         ngAfterViewInit() {
           foundQueryList = this.customDirs;
@@ -3169,10 +3374,10 @@ describe('inheritance', () => {
           <li child-dir>one</li>
           <li child-dir>two</li>
         </my-comp>
-      `
+      `,
+        standalone: false,
       })
-      class App {
-      }
+      class App {}
 
       TestBed.configureTestingModule({
         declarations: [App, MyComponent, SuperDirective, ChildDir],
@@ -3186,12 +3391,15 @@ describe('inheritance', () => {
     it('should inherit ViewChildren queries', () => {
       let foundQueryList: QueryList<ChildDir>;
 
-      @Directive({selector: '[child-dir]'})
-      class ChildDir {
-      }
+      @Directive({
+        selector: '[child-dir]',
+        standalone: false,
+      })
+      class ChildDir {}
 
       @Directive({
         selector: '[super-dir]',
+        standalone: false,
       })
       class SuperDirective {
         @ViewChildren(ChildDir) customDirs!: QueryList<ChildDir>;
@@ -3204,6 +3412,7 @@ describe('inheritance', () => {
             <li child-dir *ngFor="let item of items">{{item}}</li>
           </ul>
         `,
+        standalone: false,
       })
       class MyComponent extends SuperDirective {
         items = [1, 2, 3, 4, 5];
@@ -3215,10 +3424,10 @@ describe('inheritance', () => {
       @Component({
         template: `
         <my-comp></my-comp>
-      `
+      `,
+        standalone: false,
       })
-      class App {
-      }
+      class App {}
 
       TestBed.configureTestingModule({
         declarations: [App, MyComponent, ChildDir, SuperDirective],
@@ -3229,31 +3438,27 @@ describe('inheritance', () => {
       expect(foundQueryList!.length).toBe(5);
     });
 
-    xdescribe(
-        'what happens when...',
-        () => {
-            // TODO: sub has Input and super has Output on same property
-            // TODO: sub has Input and super has HostBinding on same property
-            // TODO: sub has Input and super has ViewChild on same property
-            // TODO: sub has Input and super has ViewChildren on same property
-            // TODO: sub has Input and super has ContentChild on same property
-            // TODO: sub has Input and super has ContentChildren on same property
-            // TODO: sub has Output and super has HostBinding on same property
-            // TODO: sub has Output and super has ViewChild on same property
-            // TODO: sub has Output and super has ViewChildren on same property
-            // TODO: sub has Output and super has ContentChild on same property
-            // TODO: sub has Output and super has ContentChildren on same property
-            // TODO: sub has HostBinding and super has ViewChild on same property
-            // TODO: sub has HostBinding and super has ViewChildren on same property
-            // TODO: sub has HostBinding and super has ContentChild on same property
-            // TODO: sub has HostBinding and super has ContentChildren on same property
-            // TODO: sub has ViewChild and super has ViewChildren on same property
-            // TODO: sub has ViewChild and super has ContentChild on same property
-            // TODO: sub has ViewChild and super has ContentChildren on same property
-            // TODO: sub has ViewChildren and super has ContentChild on same property
-            // TODO: sub has ViewChildren and super has ContentChildren on same property
-            // TODO: sub has ContentChild and super has ContentChildren on same property
-        });
+    // TODO: sub has Input and super has Output on same property
+    // TODO: sub has Input and super has HostBinding on same property
+    // TODO: sub has Input and super has ViewChild on same property
+    // TODO: sub has Input and super has ViewChildren on same property
+    // TODO: sub has Input and super has ContentChild on same property
+    // TODO: sub has Input and super has ContentChildren on same property
+    // TODO: sub has Output and super has HostBinding on same property
+    // TODO: sub has Output and super has ViewChild on same property
+    // TODO: sub has Output and super has ViewChildren on same property
+    // TODO: sub has Output and super has ContentChild on same property
+    // TODO: sub has Output and super has ContentChildren on same property
+    // TODO: sub has HostBinding and super has ViewChild on same property
+    // TODO: sub has HostBinding and super has ViewChildren on same property
+    // TODO: sub has HostBinding and super has ContentChild on same property
+    // TODO: sub has HostBinding and super has ContentChildren on same property
+    // TODO: sub has ViewChild and super has ViewChildren on same property
+    // TODO: sub has ViewChild and super has ContentChild on same property
+    // TODO: sub has ViewChild and super has ContentChildren on same property
+    // TODO: sub has ViewChildren and super has ContentChild on same property
+    // TODO: sub has ViewChildren and super has ContentChildren on same property
+    // TODO: sub has ContentChild and super has ContentChildren on same property
   });
 
   describe('of a directive inherited by a bare class and then by a component', () => {
@@ -3264,6 +3469,7 @@ describe('inheritance', () => {
 
       @Directive({
         selector: '[super-dir]',
+        standalone: false,
       })
       class SuperDirective {
         ngOnInit() {
@@ -3291,18 +3497,23 @@ describe('inheritance', () => {
 
       class BareClass extends SuperDirective {}
 
-      beforeEach(() => fired.length = 0);
+      beforeEach(() => (fired.length = 0));
 
       it('ngOnInit', () => {
-        @Component({selector: 'my-comp', template: `<p>test</p>`})
+        @Component({
+          selector: 'my-comp',
+          template: `<p>test</p>`,
+          standalone: false,
+        })
         class MyComponent extends BareClass {
-          ngOnInit() {
+          override ngOnInit() {
             fired.push('sub init');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -3327,23 +3538,23 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngDoCheck', () => {
         @Directive({
           selector: 'my-comp',
+          standalone: false,
         })
         class MyComponent extends BareClass {
-          ngDoCheck() {
+          override ngDoCheck() {
             fired.push('sub do check');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -3368,24 +3579,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterContentInit', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends BareClass {
-          ngAfterContentInit() {
+          override ngAfterContentInit() {
             fired.push('sub after content init');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -3410,24 +3621,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterContentChecked', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends BareClass {
-          ngAfterContentChecked() {
+          override ngAfterContentChecked() {
             fired.push('sub after content checked');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -3452,24 +3663,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterViewInit', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends BareClass {
-          ngAfterViewInit() {
+          override ngAfterViewInit() {
             fired.push('sub after view init');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -3494,24 +3705,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterViewChecked', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends BareClass {
-          ngAfterViewChecked() {
+          override ngAfterViewChecked() {
             fired.push('sub after view checked');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -3536,24 +3747,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngOnDestroy', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends BareClass {
-          ngOnDestroy() {
+          override ngOnDestroy() {
             fired.push('sub destroy');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -3578,9 +3789,7 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'sub destroy',
-        ]);
+        expect(fired).toEqual(['sub destroy']);
       });
     });
 
@@ -3592,6 +3801,7 @@ describe('inheritance', () => {
       it('should inherit inputs', () => {
         @Directive({
           selector: '[super-dir]',
+          standalone: false,
         })
         class SuperDirective {
           @Input() foo = '';
@@ -3603,14 +3813,21 @@ describe('inheritance', () => {
           @Input() bar = '';
         }
 
-        @Component({selector: 'my-comp', template: `<p>test</p>`})
+        @Component({
+          selector: 'my-comp',
+          template: `<p>test</p>`,
+          standalone: false,
+        })
         class MyComponent extends BareClass {
-          @Input() baz = '';
+          @Input() override baz = '';
 
           @Input() qux = '';
         }
 
-        @Component({template: `<my-comp [foo]="a" [bar]="b" [baz]="c" [qux]="d"></my-comp>`})
+        @Component({
+          template: `<my-comp [foo]="a" [bar]="b" [baz]="c" [qux]="d"></my-comp>`,
+          standalone: false,
+        })
         class App {
           a = 'a';
           b = 'b';
@@ -3624,8 +3841,9 @@ describe('inheritance', () => {
         const fixture = TestBed.createComponent(App);
         fixture.detectChanges();
 
-        const subDir: MyComponent =
-            fixture.debugElement.query(By.directive(MyComponent)).componentInstance;
+        const subDir: MyComponent = fixture.debugElement.query(
+          By.directive(MyComponent),
+        ).componentInstance;
 
         expect(subDir.foo).toEqual('a');
         expect(subDir.bar).toEqual('b');
@@ -3643,6 +3861,7 @@ describe('inheritance', () => {
       it('should inherit outputs', () => {
         @Directive({
           selector: '[super-dir]',
+          standalone: false,
         })
         class SuperDirective {
           @Output() foo = new EventEmitter<string>();
@@ -3653,6 +3872,7 @@ describe('inheritance', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends BareClass {
           ngOnInit() {
@@ -3663,7 +3883,8 @@ describe('inheritance', () => {
         @Component({
           template: `
           <my-comp (foo)="handleFoo($event)"></my-comp>
-        `
+        `,
+          standalone: false,
         })
         class App {
           foo = '';
@@ -3690,6 +3911,7 @@ describe('inheritance', () => {
       it('should compose host bindings for styles', () => {
         @Directive({
           selector: '[super-dir]',
+          standalone: false,
         })
         class SuperDirective {
           @HostBinding('style.color') color = 'red';
@@ -3702,17 +3924,17 @@ describe('inheritance', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
-        class MyComponent extends BareClass {
-        }
+        class MyComponent extends BareClass {}
 
         @Component({
           template: `
           <my-comp>test</my-comp>
-        `
+        `,
+          standalone: false,
         })
-        class App {
-        }
+        class App {}
 
         TestBed.configureTestingModule({
           declarations: [App, MyComponent],
@@ -3733,6 +3955,7 @@ describe('inheritance', () => {
       it('should compose host bindings (non-style related)', () => {
         @Directive({
           selector: '[super-dir]',
+          standalone: false,
         })
         class SuperDirective {
           @HostBinding('title')
@@ -3755,16 +3978,16 @@ describe('inheritance', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
-        class MyComponent extends BareClass {
-        }
+        class MyComponent extends BareClass {}
         @Component({
           template: `
           <my-comp superTitle="test1" superAccessKey="test2">test</my-comp>
-        `
+        `,
+          standalone: false,
         })
-        class App {
-        }
+        class App {}
 
         TestBed.configureTestingModule({
           declarations: [App, SuperDirective, BareClass, MyComponent],
@@ -3781,12 +4004,15 @@ describe('inheritance', () => {
     it('should inherit ContentChildren queries', () => {
       let foundQueryList: QueryList<ChildDir>;
 
-      @Directive({selector: '[child-dir]'})
-      class ChildDir {
-      }
+      @Directive({
+        selector: '[child-dir]',
+        standalone: false,
+      })
+      class ChildDir {}
 
       @Directive({
         selector: '[super-dir]',
+        standalone: false,
       })
       class SuperDirective {
         @ContentChildren(ChildDir) customDirs!: QueryList<ChildDir>;
@@ -3797,6 +4023,7 @@ describe('inheritance', () => {
       @Component({
         selector: 'my-comp',
         template: `<ul><ng-content></ng-content></ul>`,
+        standalone: false,
       })
       class MyComponent extends BareClass {
         ngAfterViewInit() {
@@ -3810,10 +4037,10 @@ describe('inheritance', () => {
           <li child-dir>one</li>
           <li child-dir>two</li>
         </my-comp>
-      `
+      `,
+        standalone: false,
       })
-      class App {
-      }
+      class App {}
 
       TestBed.configureTestingModule({
         declarations: [App, MyComponent, ChildDir, SuperDirective],
@@ -3827,12 +4054,15 @@ describe('inheritance', () => {
     it('should inherit ViewChildren queries', () => {
       let foundQueryList: QueryList<ChildDir>;
 
-      @Directive({selector: '[child-dir]'})
-      class ChildDir {
-      }
+      @Directive({
+        selector: '[child-dir]',
+        standalone: false,
+      })
+      class ChildDir {}
 
       @Directive({
         selector: '[super-dir]',
+        standalone: false,
       })
       class SuperDirective {
         @ViewChildren(ChildDir) customDirs!: QueryList<ChildDir>;
@@ -3847,6 +4077,7 @@ describe('inheritance', () => {
             <li child-dir *ngFor="let item of items">{{item}}</li>
           </ul>
         `,
+        standalone: false,
       })
       class MyComponent extends BareClass {
         items = [1, 2, 3, 4, 5];
@@ -3858,10 +4089,10 @@ describe('inheritance', () => {
       @Component({
         template: `
         <my-comp></my-comp>
-      `
+      `,
+        standalone: false,
       })
-      class App {
-      }
+      class App {}
 
       TestBed.configureTestingModule({
         declarations: [App, MyComponent, ChildDir, SuperDirective],
@@ -3872,31 +4103,27 @@ describe('inheritance', () => {
       expect(foundQueryList!.length).toBe(5);
     });
 
-    xdescribe(
-        'what happens when...',
-        () => {
-            // TODO: sub has Input and super has Output on same property
-            // TODO: sub has Input and super has HostBinding on same property
-            // TODO: sub has Input and super has ViewChild on same property
-            // TODO: sub has Input and super has ViewChildren on same property
-            // TODO: sub has Input and super has ContentChild on same property
-            // TODO: sub has Input and super has ContentChildren on same property
-            // TODO: sub has Output and super has HostBinding on same property
-            // TODO: sub has Output and super has ViewChild on same property
-            // TODO: sub has Output and super has ViewChildren on same property
-            // TODO: sub has Output and super has ContentChild on same property
-            // TODO: sub has Output and super has ContentChildren on same property
-            // TODO: sub has HostBinding and super has ViewChild on same property
-            // TODO: sub has HostBinding and super has ViewChildren on same property
-            // TODO: sub has HostBinding and super has ContentChild on same property
-            // TODO: sub has HostBinding and super has ContentChildren on same property
-            // TODO: sub has ViewChild and super has ViewChildren on same property
-            // TODO: sub has ViewChild and super has ContentChild on same property
-            // TODO: sub has ViewChild and super has ContentChildren on same property
-            // TODO: sub has ViewChildren and super has ContentChild on same property
-            // TODO: sub has ViewChildren and super has ContentChildren on same property
-            // TODO: sub has ContentChild and super has ContentChildren on same property
-        });
+    // TODO: sub has Input and super has Output on same property
+    // TODO: sub has Input and super has HostBinding on same property
+    // TODO: sub has Input and super has ViewChild on same property
+    // TODO: sub has Input and super has ViewChildren on same property
+    // TODO: sub has Input and super has ContentChild on same property
+    // TODO: sub has Input and super has ContentChildren on same property
+    // TODO: sub has Output and super has HostBinding on same property
+    // TODO: sub has Output and super has ViewChild on same property
+    // TODO: sub has Output and super has ViewChildren on same property
+    // TODO: sub has Output and super has ContentChild on same property
+    // TODO: sub has Output and super has ContentChildren on same property
+    // TODO: sub has HostBinding and super has ViewChild on same property
+    // TODO: sub has HostBinding and super has ViewChildren on same property
+    // TODO: sub has HostBinding and super has ContentChild on same property
+    // TODO: sub has HostBinding and super has ContentChildren on same property
+    // TODO: sub has ViewChild and super has ViewChildren on same property
+    // TODO: sub has ViewChild and super has ContentChild on same property
+    // TODO: sub has ViewChild and super has ContentChildren on same property
+    // TODO: sub has ViewChildren and super has ContentChild on same property
+    // TODO: sub has ViewChildren and super has ContentChildren on same property
+    // TODO: sub has ContentChild and super has ContentChildren on same property
   });
 
   describe('of a component inherited by a component', () => {
@@ -3908,6 +4135,7 @@ describe('inheritance', () => {
       @Component({
         selector: 'super-comp',
         template: `<p>super</p>`,
+        standalone: false,
       })
       class SuperComponent {
         ngOnInit() {
@@ -3933,21 +4161,23 @@ describe('inheritance', () => {
         }
       }
 
-      beforeEach(() => fired.length = 0);
+      beforeEach(() => (fired.length = 0));
 
       it('ngOnInit', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperComponent {
-          ngOnInit() {
+          override ngOnInit() {
             fired.push('sub init');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -3972,24 +4202,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngDoCheck', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperComponent {
-          ngDoCheck() {
+          override ngDoCheck() {
             fired.push('sub do check');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -4014,24 +4244,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterContentInit', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperComponent {
-          ngAfterContentInit() {
+          override ngAfterContentInit() {
             fired.push('sub after content init');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -4056,24 +4286,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterContentChecked', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperComponent {
-          ngAfterContentChecked() {
+          override ngAfterContentChecked() {
             fired.push('sub after content checked');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -4098,24 +4328,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterViewInit', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperComponent {
-          ngAfterViewInit() {
+          override ngAfterViewInit() {
             fired.push('sub after view init');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -4140,24 +4370,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterViewChecked', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperComponent {
-          ngAfterViewChecked() {
+          override ngAfterViewChecked() {
             fired.push('sub after view checked');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -4182,24 +4412,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngOnDestroy', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperComponent {
-          ngOnDestroy() {
+          override ngOnDestroy() {
             fired.push('sub destroy');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -4224,9 +4454,7 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'sub destroy',
-        ]);
+        expect(fired).toEqual(['sub destroy']);
       });
     });
 
@@ -4239,6 +4467,7 @@ describe('inheritance', () => {
         @Component({
           selector: 'super-comp',
           template: `<p>super</p>`,
+          standalone: false,
         })
         class SuperComponent {
           @Input() foo = '';
@@ -4248,14 +4477,21 @@ describe('inheritance', () => {
           @Input() baz = '';
         }
 
-        @Component({selector: 'my-comp', template: `<p>test</p>`})
+        @Component({
+          selector: 'my-comp',
+          template: `<p>test</p>`,
+          standalone: false,
+        })
         class MyComponent extends SuperComponent {
-          @Input() baz = '';
+          @Input() override baz = '';
 
           @Input() qux = '';
         }
 
-        @Component({template: `<my-comp [foo]="a" [bar]="b" [baz]="c" [qux]="d"></my-comp>`})
+        @Component({
+          template: `<my-comp [foo]="a" [bar]="b" [baz]="c" [qux]="d"></my-comp>`,
+          standalone: false,
+        })
         class App {
           a = 'a';
           b = 'b';
@@ -4269,8 +4505,9 @@ describe('inheritance', () => {
         const fixture = TestBed.createComponent(App);
         fixture.detectChanges();
 
-        const subDir: MyComponent =
-            fixture.debugElement.query(By.directive(MyComponent)).componentInstance;
+        const subDir: MyComponent = fixture.debugElement.query(
+          By.directive(MyComponent),
+        ).componentInstance;
 
         expect(subDir.foo).toEqual('a');
         expect(subDir.bar).toEqual('b');
@@ -4289,6 +4526,7 @@ describe('inheritance', () => {
         @Component({
           selector: 'super-comp',
           template: `<p>super</p>`,
+          standalone: false,
         })
         class SuperComponent {
           @Output() foo = new EventEmitter<string>();
@@ -4297,6 +4535,7 @@ describe('inheritance', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperComponent {
           ngOnInit() {
@@ -4307,7 +4546,8 @@ describe('inheritance', () => {
         @Component({
           template: `
           <my-comp (foo)="handleFoo($event)"></my-comp>
-        `
+        `,
+          standalone: false,
         })
         class App {
           foo = '';
@@ -4329,96 +4569,94 @@ describe('inheritance', () => {
     });
 
     describe('animations', () => {
-      onlyInIvy('View Engine does not inherit `host` metadata from superclass')
-          .it('should work with inherited host bindings and animations', () => {
-            @Component({
-              selector: 'super-comp',
-              template: '<div>super-comp</div>',
-              host: {
-                '[@animation]': 'colorExp',
-              },
-              animations: [
-                trigger('animation', [state('color', style({color: 'red'}))]),
-              ],
-            })
-            class SuperComponent {
-              colorExp = 'color';
-            }
+      it('should work with inherited host bindings and animations', () => {
+        @Component({
+          selector: 'super-comp',
+          template: '<div>super-comp</div>',
+          host: {
+            '[@animation]': 'colorExp',
+          },
+          animations: [trigger('animation', [state('color', style({color: 'red'}))])],
+          standalone: false,
+        })
+        class SuperComponent {
+          colorExp = 'color';
+        }
 
-            @Component({
-              selector: 'my-comp',
-              template: `<div>my-comp</div>`,
-            })
-            class MyComponent extends SuperComponent {
-            }
+        @Component({
+          selector: 'my-comp',
+          template: `<div>my-comp</div>`,
+          standalone: false,
+        })
+        class MyComponent extends SuperComponent {}
 
-            @Component({
-              template: '<my-comp>app</my-comp>',
-            })
-            class App {
-            }
+        @Component({
+          template: '<my-comp>app</my-comp>',
+          standalone: false,
+        })
+        class App {}
 
-            TestBed.configureTestingModule({
-              declarations: [App, MyComponent, SuperComponent],
-              imports: [NoopAnimationsModule],
-            });
-            const fixture = TestBed.createComponent(App);
-            fixture.detectChanges();
-            const queryResult = fixture.debugElement.query(By.css('my-comp'));
+        TestBed.configureTestingModule({
+          declarations: [App, MyComponent, SuperComponent],
+          imports: [NoopAnimationsModule],
+        });
+        const fixture = TestBed.createComponent(App);
+        fixture.detectChanges();
+        const queryResult = fixture.debugElement.query(By.css('my-comp'));
 
-            expect(queryResult.nativeElement.style.color).toBe('red');
-          });
+        expect(queryResult.nativeElement.style.color).toBe('red');
+      });
 
-      onlyInIvy('View Engine does not inherit `host` metadata from superclass')
-          .it('should compose animations (from super class)', () => {
-            @Component({
-              selector: 'super-comp',
-              template: '...',
-              animations: [
-                trigger('animation1', [state('color', style({color: 'red'}))]),
-                trigger('animation2', [state('opacity', style({opacity: '0.5'}))]),
-              ],
-            })
-            class SuperComponent {
-            }
+      it('should compose animations (from super class)', () => {
+        @Component({
+          selector: 'super-comp',
+          template: '...',
+          animations: [
+            trigger('animation1', [state('color', style({color: 'red'}))]),
+            trigger('animation2', [state('opacity', style({opacity: '0.5'}))]),
+          ],
+          standalone: false,
+        })
+        class SuperComponent {}
 
-            @Component({
-              selector: 'my-comp',
-              template: '<div>my-comp</div>',
-              host: {
-                '[@animation1]': 'colorExp',
-                '[@animation2]': 'opacityExp',
-                '[@animation3]': 'bgExp',
-              },
-              animations: [
-                trigger('animation1', [state('color', style({color: 'blue'}))]),
-                trigger('animation3', [state('bg', style({backgroundColor: 'green'}))]),
-              ],
-            })
-            class MyComponent extends SuperComponent {
-              colorExp = 'color';
-              opacityExp = 'opacity';
-              bgExp = 'bg';
-            }
+        @Component({
+          selector: 'my-comp',
+          template: '<div>my-comp</div>',
+          host: {
+            '[@animation1]': 'colorExp',
+            '[@animation2]': 'opacityExp',
+            '[@animation3]': 'bgExp',
+          },
+          animations: [
+            trigger('animation1', [state('color', style({color: 'blue'}))]),
+            trigger('animation3', [state('bg', style({backgroundColor: 'green'}))]),
+          ],
+          standalone: false,
+        })
+        class MyComponent extends SuperComponent {
+          colorExp = 'color';
+          opacityExp = 'opacity';
+          bgExp = 'bg';
+        }
 
-            @Component({
-              template: '<my-comp>app</my-comp>',
-            })
-            class App {
-            }
+        @Component({
+          template: '<my-comp>app</my-comp>',
+          standalone: false,
+        })
+        class App {}
 
-            TestBed.configureTestingModule({
-              declarations: [App, MyComponent, SuperComponent],
-              imports: [NoopAnimationsModule],
-            });
-            const fixture = TestBed.createComponent(App);
-            fixture.detectChanges();
-            const queryResult = fixture.debugElement.query(By.css('my-comp'));
+        TestBed.configureTestingModule({
+          declarations: [App, MyComponent, SuperComponent],
+          imports: [NoopAnimationsModule],
+        });
+        const fixture = TestBed.createComponent(App);
+        fixture.detectChanges();
+        const queryResult = fixture.debugElement.query(By.css('my-comp'));
 
-            expect(queryResult.nativeElement.style.color).toBe('blue');
-            expect(queryResult.nativeElement.style.opacity).toBe('0.5');
-            expect(queryResult.nativeElement.style.backgroundColor).toBe('green');
-          });
+        expect(queryResult.nativeElement.style.color).toBe('blue');
+        expect(queryResult.nativeElement.style.opacity).toBe('0.5');
+        expect(queryResult.nativeElement.style.backgroundColor).toBe('green');
+      });
     });
 
     describe('host bindings (style related)', () => {
@@ -4428,6 +4666,7 @@ describe('inheritance', () => {
         @Component({
           selector: 'super-comp',
           template: `<p>super</p>`,
+          standalone: false,
         })
         class SuperComponent {
           @HostBinding('style.color') color = 'red';
@@ -4438,17 +4677,17 @@ describe('inheritance', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
-        class MyComponent extends SuperComponent {
-        }
+        class MyComponent extends SuperComponent {}
 
         @Component({
           template: `
           <my-comp>test</my-comp>
-        `
+        `,
+          standalone: false,
         })
-        class App {
-        }
+        class App {}
 
         TestBed.configureTestingModule({
           declarations: [App, MyComponent, SuperComponent],
@@ -4470,6 +4709,7 @@ describe('inheritance', () => {
         @Component({
           selector: 'super-comp',
           template: `<p>super</p>`,
+          standalone: false,
         })
         class SuperComponent {
           @HostBinding('title')
@@ -4483,16 +4723,16 @@ describe('inheritance', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
-        class MyComponent extends SuperComponent {
-        }
+        class MyComponent extends SuperComponent {}
         @Component({
           template: `
         <my-comp superTitle="test">test</my-comp>
-      `
+      `,
+          standalone: false,
         })
-        class App {
-        }
+        class App {}
 
         TestBed.configureTestingModule({
           declarations: [App, MyComponent],
@@ -4508,13 +4748,16 @@ describe('inheritance', () => {
     it('should inherit ContentChildren queries', () => {
       let foundQueryList: QueryList<ChildDir>;
 
-      @Directive({selector: '[child-dir]'})
-      class ChildDir {
-      }
+      @Directive({
+        selector: '[child-dir]',
+        standalone: false,
+      })
+      class ChildDir {}
 
       @Component({
         selector: 'super-comp',
         template: `<p>super</p>`,
+        standalone: false,
       })
       class SuperComponent {
         @ContentChildren(ChildDir) customDirs!: QueryList<ChildDir>;
@@ -4523,6 +4766,7 @@ describe('inheritance', () => {
       @Component({
         selector: 'my-comp',
         template: `<ul><ng-content></ng-content></ul>`,
+        standalone: false,
       })
       class MyComponent extends SuperComponent {
         ngAfterViewInit() {
@@ -4536,10 +4780,10 @@ describe('inheritance', () => {
           <li child-dir>one</li>
           <li child-dir>two</li>
         </my-comp>
-      `
+      `,
+        standalone: false,
       })
-      class App {
-      }
+      class App {}
 
       TestBed.configureTestingModule({
         declarations: [App, MyComponent, SuperComponent, ChildDir],
@@ -4553,13 +4797,16 @@ describe('inheritance', () => {
     it('should inherit ViewChildren queries', () => {
       let foundQueryList: QueryList<ChildDir>;
 
-      @Directive({selector: '[child-dir]'})
-      class ChildDir {
-      }
+      @Directive({
+        selector: '[child-dir]',
+        standalone: false,
+      })
+      class ChildDir {}
 
       @Component({
         selector: 'super-comp',
         template: `<p>super</p>`,
+        standalone: false,
       })
       class SuperComponent {
         @ViewChildren(ChildDir) customDirs!: QueryList<ChildDir>;
@@ -4572,6 +4819,7 @@ describe('inheritance', () => {
             <li child-dir *ngFor="let item of items">{{item}}</li>
           </ul>
         `,
+        standalone: false,
       })
       class MyComponent extends SuperComponent {
         items = [1, 2, 3, 4, 5];
@@ -4583,10 +4831,10 @@ describe('inheritance', () => {
       @Component({
         template: `
         <my-comp></my-comp>
-      `
+      `,
+        standalone: false,
       })
-      class App {
-      }
+      class App {}
 
       TestBed.configureTestingModule({
         declarations: [App, MyComponent, ChildDir, SuperComponent],
@@ -4603,6 +4851,7 @@ describe('inheritance', () => {
       @Component({
         selector: 'app-base',
         template: 'base',
+        standalone: false,
       })
       class BaseComponent {
         @HostListener('click')
@@ -4614,16 +4863,16 @@ describe('inheritance', () => {
       @Component({
         selector: 'app-child',
         template: 'child',
+        standalone: false,
       })
       class ChildComponent extends BaseComponent {
         // additional host listeners are defined here to have `hostBindings` function generated on
         // component def, which would trigger `hostBindings` functions merge operation in
         // InheritDefinitionFeature logic (merging Child and Base host binding functions)
         @HostListener('focus')
-        focused() {
-        }
+        focused() {}
 
-        clicked() {
+        override clicked() {
           events.push('ChildComponent.clicked');
         }
       }
@@ -4631,16 +4880,16 @@ describe('inheritance', () => {
       @Component({
         selector: 'app-grand-child',
         template: 'grand-child',
+        standalone: false,
       })
       class GrandChildComponent extends ChildComponent {
         // additional host listeners are defined here to have `hostBindings` function generated on
         // component def, which would trigger `hostBindings` functions merge operation in
         // InheritDefinitionFeature logic (merging GrandChild and Child host binding functions)
         @HostListener('blur')
-        blurred() {
-        }
+        blurred() {}
 
-        clicked() {
+        override clicked() {
           events.push('GrandChildComponent.clicked');
         }
       }
@@ -4652,9 +4901,9 @@ describe('inheritance', () => {
           <app-child></app-child>
           <app-grand-child></app-grand-child>
         `,
+        standalone: false,
       })
-      class RootApp {
-      }
+      class RootApp {}
 
       const components = [BaseComponent, ChildComponent, GrandChildComponent];
       TestBed.configureTestingModule({
@@ -4663,38 +4912,37 @@ describe('inheritance', () => {
       const fixture = TestBed.createComponent(RootApp);
       fixture.detectChanges();
 
-      components.forEach(component => {
+      components.forEach((component) => {
         fixture.debugElement.query(By.directive(component)).nativeElement.click();
       });
-      expect(events).toEqual(
-          ['BaseComponent.clicked', 'ChildComponent.clicked', 'GrandChildComponent.clicked']);
+      expect(events).toEqual([
+        'BaseComponent.clicked',
+        'ChildComponent.clicked',
+        'GrandChildComponent.clicked',
+      ]);
     });
 
-    xdescribe(
-        'what happens when...',
-        () => {
-            // TODO: sub has Input and super has Output on same property
-            // TODO: sub has Input and super has HostBinding on same property
-            // TODO: sub has Input and super has ViewChild on same property
-            // TODO: sub has Input and super has ViewChildren on same property
-            // TODO: sub has Input and super has ContentChild on same property
-            // TODO: sub has Input and super has ContentChildren on same property
-            // TODO: sub has Output and super has HostBinding on same property
-            // TODO: sub has Output and super has ViewChild on same property
-            // TODO: sub has Output and super has ViewChildren on same property
-            // TODO: sub has Output and super has ContentChild on same property
-            // TODO: sub has Output and super has ContentChildren on same property
-            // TODO: sub has HostBinding and super has ViewChild on same property
-            // TODO: sub has HostBinding and super has ViewChildren on same property
-            // TODO: sub has HostBinding and super has ContentChild on same property
-            // TODO: sub has HostBinding and super has ContentChildren on same property
-            // TODO: sub has ViewChild and super has ViewChildren on same property
-            // TODO: sub has ViewChild and super has ContentChild on same property
-            // TODO: sub has ViewChild and super has ContentChildren on same property
-            // TODO: sub has ViewChildren and super has ContentChild on same property
-            // TODO: sub has ViewChildren and super has ContentChildren on same property
-            // TODO: sub has ContentChild and super has ContentChildren on same property
-        });
+    // TODO: sub has Input and super has Output on same property
+    // TODO: sub has Input and super has HostBinding on same property
+    // TODO: sub has Input and super has ViewChild on same property
+    // TODO: sub has Input and super has ViewChildren on same property
+    // TODO: sub has Input and super has ContentChild on same property
+    // TODO: sub has Input and super has ContentChildren on same property
+    // TODO: sub has Output and super has HostBinding on same property
+    // TODO: sub has Output and super has ViewChild on same property
+    // TODO: sub has Output and super has ViewChildren on same property
+    // TODO: sub has Output and super has ContentChild on same property
+    // TODO: sub has Output and super has ContentChildren on same property
+    // TODO: sub has HostBinding and super has ViewChild on same property
+    // TODO: sub has HostBinding and super has ViewChildren on same property
+    // TODO: sub has HostBinding and super has ContentChild on same property
+    // TODO: sub has HostBinding and super has ContentChildren on same property
+    // TODO: sub has ViewChild and super has ViewChildren on same property
+    // TODO: sub has ViewChild and super has ContentChild on same property
+    // TODO: sub has ViewChild and super has ContentChildren on same property
+    // TODO: sub has ViewChildren and super has ContentChild on same property
+    // TODO: sub has ViewChildren and super has ContentChildren on same property
+    // TODO: sub has ContentChild and super has ContentChildren on same property
   });
 
   describe('of a component inherited by a bare class then by a component', () => {
@@ -4706,6 +4954,7 @@ describe('inheritance', () => {
       @Component({
         selector: 'super-comp',
         template: `<p>super</p>`,
+        standalone: false,
       })
       class SuperSuperComponent {
         ngOnInit() {
@@ -4733,21 +4982,23 @@ describe('inheritance', () => {
 
       class SuperComponent extends SuperSuperComponent {}
 
-      beforeEach(() => fired.length = 0);
+      beforeEach(() => (fired.length = 0));
 
       it('ngOnInit', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperComponent {
-          ngOnInit() {
+          override ngOnInit() {
             fired.push('sub init');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -4772,24 +5023,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngDoCheck', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperComponent {
-          ngDoCheck() {
+          override ngDoCheck() {
             fired.push('sub do check');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -4814,24 +5065,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterContentInit', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperComponent {
-          ngAfterContentInit() {
+          override ngAfterContentInit() {
             fired.push('sub after content init');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -4856,24 +5107,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterContentChecked', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperComponent {
-          ngAfterContentChecked() {
+          override ngAfterContentChecked() {
             fired.push('sub after content checked');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -4898,24 +5149,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterViewInit', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperComponent {
-          ngAfterViewInit() {
+          override ngAfterViewInit() {
             fired.push('sub after view init');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -4940,24 +5191,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngAfterViewChecked', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperComponent {
-          ngAfterViewChecked() {
+          override ngAfterViewChecked() {
             fired.push('sub after view checked');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -4982,24 +5233,24 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'super destroy',
-        ]);
+        expect(fired).toEqual(['super destroy']);
       });
 
       it('ngOnDestroy', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperComponent {
-          ngOnDestroy() {
+          override ngOnDestroy() {
             fired.push('sub destroy');
           }
         }
 
         @Component({
           template: `<my-comp *ngIf="showing"></my-comp>`,
+          standalone: false,
         })
         class App {
           showing = true;
@@ -5024,9 +5275,7 @@ describe('inheritance', () => {
         fixture.componentInstance.showing = false;
         fixture.detectChanges();
 
-        expect(fired).toEqual([
-          'sub destroy',
-        ]);
+        expect(fired).toEqual(['sub destroy']);
       });
     });
 
@@ -5039,6 +5288,7 @@ describe('inheritance', () => {
         @Component({
           selector: 'super-comp',
           template: `<p>super</p>`,
+          standalone: false,
         })
         class SuperSuperComponent {
           @Input() foo = '';
@@ -5050,14 +5300,21 @@ describe('inheritance', () => {
           @Input() bar = '';
         }
 
-        @Component({selector: 'my-comp', template: `<p>test</p>`})
+        @Component({
+          selector: 'my-comp',
+          template: `<p>test</p>`,
+          standalone: false,
+        })
         class MyComponent extends BareClass {
-          @Input() baz = '';
+          @Input() override baz = '';
 
           @Input() qux = '';
         }
 
-        @Component({template: `<my-comp [foo]="a" [bar]="b" [baz]="c" [qux]="d"></my-comp>`})
+        @Component({
+          template: `<my-comp [foo]="a" [bar]="b" [baz]="c" [qux]="d"></my-comp>`,
+          standalone: false,
+        })
         class App {
           a = 'a';
           b = 'b';
@@ -5071,8 +5328,9 @@ describe('inheritance', () => {
         const fixture = TestBed.createComponent(App);
         fixture.detectChanges();
 
-        const myComp: MyComponent =
-            fixture.debugElement.query(By.directive(MyComponent)).componentInstance;
+        const myComp: MyComponent = fixture.debugElement.query(
+          By.directive(MyComponent),
+        ).componentInstance;
 
         expect(myComp.foo).toEqual('a');
         expect(myComp.bar).toEqual('b');
@@ -5091,6 +5349,7 @@ describe('inheritance', () => {
         @Component({
           selector: 'super-comp',
           template: `<p>super</p>`,
+          standalone: false,
         })
         class SuperSuperComponent {
           @Output() foo = new EventEmitter<string>();
@@ -5103,6 +5362,7 @@ describe('inheritance', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
         class MyComponent extends SuperComponent {
           ngOnInit() {
@@ -5114,7 +5374,8 @@ describe('inheritance', () => {
         @Component({
           template: `
           <my-comp (foo)="handleFoo($event)" (bar)="handleBar($event)"></my-comp>
-        `
+        `,
+          standalone: false,
         })
         class App {
           foo = '';
@@ -5143,68 +5404,69 @@ describe('inheritance', () => {
     });
 
     describe('animations', () => {
-      onlyInIvy('View Engine does not inherit `host` metadata from superclass')
-          .it('should compose animations across multiple inheritance levels', () => {
-            @Component({
-              selector: 'super-comp',
-              template: '...',
-              host: {
-                '[@animation1]': 'colorExp',
-                '[@animation2]': 'opacityExp',
-              },
-              animations: [
-                trigger('animation1', [state('color', style({color: 'red'}))]),
-                trigger('animation2', [state('opacity', style({opacity: '0.5'}))]),
-              ],
-            })
-            class SuperComponent {
-              colorExp = 'color';
-              opacityExp = 'opacity';
-            }
+      it('should compose animations across multiple inheritance levels', () => {
+        @Component({
+          selector: 'super-comp',
+          template: '...',
+          host: {
+            '[@animation1]': 'colorExp',
+            '[@animation2]': 'opacityExp',
+          },
+          animations: [
+            trigger('animation1', [state('color', style({color: 'red'}))]),
+            trigger('animation2', [state('opacity', style({opacity: '0.5'}))]),
+          ],
+          standalone: false,
+        })
+        class SuperComponent {
+          colorExp = 'color';
+          opacityExp = 'opacity';
+        }
 
-            @Component({
-              selector: 'intermediate-comp',
-              template: '...',
-            })
-            class IntermediateComponent extends SuperComponent {
-            }
+        @Component({
+          selector: 'intermediate-comp',
+          template: '...',
+          standalone: false,
+        })
+        class IntermediateComponent extends SuperComponent {}
 
-            @Component({
-              selector: 'my-comp',
-              template: '<div>my-comp</div>',
-              host: {
-                '[@animation1]': 'colorExp',
-                '[@animation3]': 'bgExp',
-              },
-              animations: [
-                trigger('animation1', [state('color', style({color: 'blue'}))]),
-                trigger('animation3', [state('bg', style({backgroundColor: 'green'}))]),
-              ],
-            })
-            class MyComponent extends IntermediateComponent {
-              colorExp = 'color';
-              opacityExp = 'opacity';
-              bgExp = 'bg';
-            }
+        @Component({
+          selector: 'my-comp',
+          template: '<div>my-comp</div>',
+          host: {
+            '[@animation1]': 'colorExp',
+            '[@animation3]': 'bgExp',
+          },
+          animations: [
+            trigger('animation1', [state('color', style({color: 'blue'}))]),
+            trigger('animation3', [state('bg', style({backgroundColor: 'green'}))]),
+          ],
+          standalone: false,
+        })
+        class MyComponent extends IntermediateComponent {
+          override colorExp = 'color';
+          override opacityExp = 'opacity';
+          bgExp = 'bg';
+        }
 
-            @Component({
-              template: '<my-comp>app</my-comp>',
-            })
-            class App {
-            }
+        @Component({
+          template: '<my-comp>app</my-comp>',
+          standalone: false,
+        })
+        class App {}
 
-            TestBed.configureTestingModule({
-              declarations: [App, MyComponent, IntermediateComponent, SuperComponent],
-              imports: [NoopAnimationsModule],
-            });
-            const fixture = TestBed.createComponent(App);
-            fixture.detectChanges();
-            const queryResult = fixture.debugElement.query(By.css('my-comp'));
+        TestBed.configureTestingModule({
+          declarations: [App, MyComponent, IntermediateComponent, SuperComponent],
+          imports: [NoopAnimationsModule],
+        });
+        const fixture = TestBed.createComponent(App);
+        fixture.detectChanges();
+        const queryResult = fixture.debugElement.query(By.css('my-comp'));
 
-            expect(queryResult.nativeElement.style.color).toBe('blue');
-            expect(queryResult.nativeElement.style.opacity).toBe('0.5');
-            expect(queryResult.nativeElement.style.backgroundColor).toBe('green');
-          });
+        expect(queryResult.nativeElement.style.color).toBe('blue');
+        expect(queryResult.nativeElement.style.opacity).toBe('0.5');
+        expect(queryResult.nativeElement.style.backgroundColor).toBe('green');
+      });
     });
     describe('host bindings (style related)', () => {
       // TODO: sub and super HostBinding same property but different bindings
@@ -5213,6 +5475,7 @@ describe('inheritance', () => {
         @Component({
           selector: 'super-comp',
           template: `<p>super</p>`,
+          standalone: false,
         })
         class SuperSuperComponent {
           @HostBinding('style.color') color = 'red';
@@ -5225,17 +5488,17 @@ describe('inheritance', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
-        class MyComponent extends SuperComponent {
-        }
+        class MyComponent extends SuperComponent {}
 
         @Component({
           template: `
           <my-comp>test</my-comp>
-        `
+        `,
+          standalone: false,
         })
-        class App {
-        }
+        class App {}
 
         TestBed.configureTestingModule({
           declarations: [App, MyComponent, SuperComponent, SuperSuperComponent],
@@ -5257,6 +5520,7 @@ describe('inheritance', () => {
         @Component({
           selector: 'super-comp',
           template: `<p>super</p>`,
+          standalone: false,
         })
         class SuperSuperComponent {
           @HostBinding('title')
@@ -5279,16 +5543,16 @@ describe('inheritance', () => {
         @Component({
           selector: 'my-comp',
           template: `<p>test</p>`,
+          standalone: false,
         })
-        class MyComponent extends SuperComponent {
-        }
+        class MyComponent extends SuperComponent {}
         @Component({
           template: `
           <my-comp superTitle="test1" superAccessKey="test2">test</my-comp>
-        `
+        `,
+          standalone: false,
         })
-        class App {
-        }
+        class App {}
 
         TestBed.configureTestingModule({
           declarations: [App, MyComponent, SuperComponent, SuperSuperComponent],
@@ -5306,13 +5570,16 @@ describe('inheritance', () => {
     it('should inherit ContentChildren queries', () => {
       let foundQueryList: QueryList<ChildDir>;
 
-      @Directive({selector: '[child-dir]'})
-      class ChildDir {
-      }
+      @Directive({
+        selector: '[child-dir]',
+        standalone: false,
+      })
+      class ChildDir {}
 
       @Component({
         selector: 'super-comp',
         template: `<p>super</p>`,
+        standalone: false,
       })
       class SuperComponent {
         @ContentChildren(ChildDir) customDirs!: QueryList<ChildDir>;
@@ -5321,6 +5588,7 @@ describe('inheritance', () => {
       @Component({
         selector: 'my-comp',
         template: `<ul><ng-content></ng-content></ul>`,
+        standalone: false,
       })
       class MyComponent extends SuperComponent {
         ngAfterViewInit() {
@@ -5334,10 +5602,10 @@ describe('inheritance', () => {
           <li child-dir>one</li>
           <li child-dir>two</li>
         </my-comp>
-      `
+      `,
+        standalone: false,
       })
-      class App {
-      }
+      class App {}
 
       TestBed.configureTestingModule({
         declarations: [App, MyComponent, SuperComponent, ChildDir],
@@ -5351,13 +5619,16 @@ describe('inheritance', () => {
     it('should inherit ViewChildren queries', () => {
       let foundQueryList: QueryList<ChildDir>;
 
-      @Directive({selector: '[child-dir]'})
-      class ChildDir {
-      }
+      @Directive({
+        selector: '[child-dir]',
+        standalone: false,
+      })
+      class ChildDir {}
 
       @Component({
         selector: 'super-comp',
         template: `<p>super</p>`,
+        standalone: false,
       })
       class SuperComponent {
         @ViewChildren(ChildDir) customDirs!: QueryList<ChildDir>;
@@ -5370,6 +5641,7 @@ describe('inheritance', () => {
             <li child-dir *ngFor="let item of items">{{item}}</li>
           </ul>
         `,
+        standalone: false,
       })
       class MyComponent extends SuperComponent {
         items = [1, 2, 3, 4, 5];
@@ -5381,10 +5653,10 @@ describe('inheritance', () => {
       @Component({
         template: `
         <my-comp></my-comp>
-      `
+      `,
+        standalone: false,
       })
-      class App {
-      }
+      class App {}
 
       TestBed.configureTestingModule({
         declarations: [App, MyComponent, ChildDir, SuperComponent],
@@ -5395,30 +5667,26 @@ describe('inheritance', () => {
       expect(foundQueryList!.length).toBe(5);
     });
 
-    xdescribe(
-        'what happens when...',
-        () => {
-            // TODO: sub has Input and super has Output on same property
-            // TODO: sub has Input and super has HostBinding on same property
-            // TODO: sub has Input and super has ViewChild on same property
-            // TODO: sub has Input and super has ViewChildren on same property
-            // TODO: sub has Input and super has ContentChild on same property
-            // TODO: sub has Input and super has ContentChildren on same property
-            // TODO: sub has Output and super has HostBinding on same property
-            // TODO: sub has Output and super has ViewChild on same property
-            // TODO: sub has Output and super has ViewChildren on same property
-            // TODO: sub has Output and super has ContentChild on same property
-            // TODO: sub has Output and super has ContentChildren on same property
-            // TODO: sub has HostBinding and super has ViewChild on same property
-            // TODO: sub has HostBinding and super has ViewChildren on same property
-            // TODO: sub has HostBinding and super has ContentChild on same property
-            // TODO: sub has HostBinding and super has ContentChildren on same property
-            // TODO: sub has ViewChild and super has ViewChildren on same property
-            // TODO: sub has ViewChild and super has ContentChild on same property
-            // TODO: sub has ViewChild and super has ContentChildren on same property
-            // TODO: sub has ViewChildren and super has ContentChild on same property
-            // TODO: sub has ViewChildren and super has ContentChildren on same property
-            // TODO: sub has ContentChild and super has ContentChildren on same property
-        });
+    // TODO: sub has Input and super has Output on same property
+    // TODO: sub has Input and super has HostBinding on same property
+    // TODO: sub has Input and super has ViewChild on same property
+    // TODO: sub has Input and super has ViewChildren on same property
+    // TODO: sub has Input and super has ContentChild on same property
+    // TODO: sub has Input and super has ContentChildren on same property
+    // TODO: sub has Output and super has HostBinding on same property
+    // TODO: sub has Output and super has ViewChild on same property
+    // TODO: sub has Output and super has ViewChildren on same property
+    // TODO: sub has Output and super has ContentChild on same property
+    // TODO: sub has Output and super has ContentChildren on same property
+    // TODO: sub has HostBinding and super has ViewChild on same property
+    // TODO: sub has HostBinding and super has ViewChildren on same property
+    // TODO: sub has HostBinding and super has ContentChild on same property
+    // TODO: sub has HostBinding and super has ContentChildren on same property
+    // TODO: sub has ViewChild and super has ViewChildren on same property
+    // TODO: sub has ViewChild and super has ContentChild on same property
+    // TODO: sub has ViewChild and super has ContentChildren on same property
+    // TODO: sub has ViewChildren and super has ContentChild on same property
+    // TODO: sub has ViewChildren and super has ContentChildren on same property
+    // TODO: sub has ContentChild and super has ContentChildren on same property
   });
 });

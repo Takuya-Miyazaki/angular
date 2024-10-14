@@ -3,11 +3,13 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {Inject, Injectable, InjectionToken, Optional, ɵɵinject} from '@angular/core';
+import {Inject, inject, Injectable, InjectionToken, OnDestroy, Optional} from '@angular/core';
+
 import {DOCUMENT} from '../dom_tokens';
+
 import {LocationChangeListener, PlatformLocation} from './platform_location';
 import {joinWithSlash, normalizeQueryParams} from './util';
 
@@ -20,7 +22,7 @@ import {joinWithSlash, normalizeQueryParams} from './util';
  * interact with application route state.
  *
  * For instance, `HashLocationStrategy` produces URLs like
- * <code class="no-auto-link">http://example.com#/foo</code>,
+ * <code class="no-auto-link">http://example.com/#/foo</code>,
  * and `PathLocationStrategy` produces
  * <code class="no-auto-link">http://example.com/foo</code> as an equivalent URL.
  *
@@ -28,28 +30,24 @@ import {joinWithSlash, normalizeQueryParams} from './util';
  *
  * @publicApi
  */
-@Injectable({providedIn: 'root', useFactory: provideLocationStrategy})
+@Injectable({providedIn: 'root', useFactory: () => inject(PathLocationStrategy)})
 export abstract class LocationStrategy {
   abstract path(includeHash?: boolean): string;
   abstract prepareExternalUrl(internal: string): string;
+  abstract getState(): unknown;
   abstract pushState(state: any, title: string, url: string, queryParams: string): void;
   abstract replaceState(state: any, title: string, url: string, queryParams: string): void;
   abstract forward(): void;
   abstract back(): void;
+  historyGo?(relativePosition: number): void {
+    throw new Error(ngDevMode ? 'Not implemented' : '');
+  }
   abstract onPopState(fn: LocationChangeListener): void;
   abstract getBaseHref(): string;
 }
 
-export function provideLocationStrategy(platformLocation: PlatformLocation) {
-  // See #23917
-  const location = ɵɵinject(DOCUMENT).location;
-  return new PathLocationStrategy(
-      ɵɵinject(PlatformLocation as any), location && location.origin || '');
-}
-
-
 /**
- * A predefined [DI token](guide/glossary#di-token) for the base href
+ * A predefined DI token for the base href
  * to be used with the `PathLocationStrategy`.
  * The base href is the URL prefix that should be preserved when generating
  * and recognizing URLs.
@@ -60,7 +58,7 @@ export function provideLocationStrategy(platformLocation: PlatformLocation) {
  * with a base href value, so that the DI framework can supply the dependency anywhere in the app.
  *
  * ```typescript
- * import {Component, NgModule} from '@angular/core';
+ * import {NgModule} from '@angular/core';
  * import {APP_BASE_HREF} from '@angular/common';
  *
  * @NgModule({
@@ -71,7 +69,7 @@ export function provideLocationStrategy(platformLocation: PlatformLocation) {
  *
  * @publicApi
  */
-export const APP_BASE_HREF = new InjectionToken<string>('appBaseHref');
+export const APP_BASE_HREF = new InjectionToken<string>(ngDevMode ? 'appBaseHref' : '');
 
 /**
  * @description
@@ -80,8 +78,8 @@ export const APP_BASE_HREF = new InjectionToken<string>('appBaseHref');
  * [path](https://en.wikipedia.org/wiki/Uniform_Resource_Locator#Syntax) of the
  * browser's URL.
  *
- * If you're using `PathLocationStrategy`, you must provide a {@link APP_BASE_HREF}
- * or add a `<base href>` element to the document.
+ * If you're using `PathLocationStrategy`, you may provide a {@link APP_BASE_HREF}
+ * or add a `<base href>` element to the document to override the default.
  *
  * For instance, if you provide an `APP_BASE_HREF` of `'/my/app/'` and call
  * `location.go('/foo')`, the browser's URL will become
@@ -104,62 +102,76 @@ export const APP_BASE_HREF = new InjectionToken<string>('appBaseHref');
  *
  * @publicApi
  */
-@Injectable()
-export class PathLocationStrategy extends LocationStrategy {
+@Injectable({providedIn: 'root'})
+export class PathLocationStrategy extends LocationStrategy implements OnDestroy {
   private _baseHref: string;
+  private _removeListenerFns: (() => void)[] = [];
 
   constructor(
-      private _platformLocation: PlatformLocation,
-      @Optional() @Inject(APP_BASE_HREF) href?: string) {
+    private _platformLocation: PlatformLocation,
+    @Optional() @Inject(APP_BASE_HREF) href?: string,
+  ) {
     super();
 
-    if (href == null) {
-      href = this._platformLocation.getBaseHrefFromDOM();
-    }
-
-    if (href == null) {
-      throw new Error(
-          `No base href set. Please provide a value for the APP_BASE_HREF token or add a base element to the document.`);
-    }
-
-    this._baseHref = href;
+    this._baseHref =
+      href ??
+      this._platformLocation.getBaseHrefFromDOM() ??
+      inject(DOCUMENT).location?.origin ??
+      '';
   }
 
-  onPopState(fn: LocationChangeListener): void {
-    this._platformLocation.onPopState(fn);
-    this._platformLocation.onHashChange(fn);
+  /** @nodoc */
+  ngOnDestroy(): void {
+    while (this._removeListenerFns.length) {
+      this._removeListenerFns.pop()!();
+    }
   }
 
-  getBaseHref(): string {
+  override onPopState(fn: LocationChangeListener): void {
+    this._removeListenerFns.push(
+      this._platformLocation.onPopState(fn),
+      this._platformLocation.onHashChange(fn),
+    );
+  }
+
+  override getBaseHref(): string {
     return this._baseHref;
   }
 
-  prepareExternalUrl(internal: string): string {
+  override prepareExternalUrl(internal: string): string {
     return joinWithSlash(this._baseHref, internal);
   }
 
-  path(includeHash: boolean = false): string {
+  override path(includeHash: boolean = false): string {
     const pathname =
-        this._platformLocation.pathname + normalizeQueryParams(this._platformLocation.search);
+      this._platformLocation.pathname + normalizeQueryParams(this._platformLocation.search);
     const hash = this._platformLocation.hash;
     return hash && includeHash ? `${pathname}${hash}` : pathname;
   }
 
-  pushState(state: any, title: string, url: string, queryParams: string) {
+  override pushState(state: any, title: string, url: string, queryParams: string) {
     const externalUrl = this.prepareExternalUrl(url + normalizeQueryParams(queryParams));
     this._platformLocation.pushState(state, title, externalUrl);
   }
 
-  replaceState(state: any, title: string, url: string, queryParams: string) {
+  override replaceState(state: any, title: string, url: string, queryParams: string) {
     const externalUrl = this.prepareExternalUrl(url + normalizeQueryParams(queryParams));
     this._platformLocation.replaceState(state, title, externalUrl);
   }
 
-  forward(): void {
+  override forward(): void {
     this._platformLocation.forward();
   }
 
-  back(): void {
+  override back(): void {
     this._platformLocation.back();
+  }
+
+  override getState(): unknown {
+    return this._platformLocation.getState();
+  }
+
+  override historyGo(relativePosition: number = 0): void {
+    this._platformLocation.historyGo?.(relativePosition);
   }
 }

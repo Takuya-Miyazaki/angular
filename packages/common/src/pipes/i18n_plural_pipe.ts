@@ -3,7 +3,7 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {Pipe, PipeTransform} from '@angular/core';
@@ -28,18 +28,25 @@ const _INTERPOLATION_REGEXP: RegExp = /#/g;
  *
  * @publicApi
  */
-@Pipe({name: 'i18nPlural', pure: true})
+@Pipe({
+  name: 'i18nPlural',
+  standalone: true,
+})
 export class I18nPluralPipe implements PipeTransform {
   constructor(private _localization: NgLocalization) {}
 
   /**
    * @param value the number to be formatted
    * @param pluralMap an object that mimics the ICU format, see
-   * http://userguide.icu-project.org/formatparse/messages.
+   * https://unicode-org.github.io/icu/userguide/format_parse/messages/.
    * @param locale a `string` defining the locale to use (uses the current {@link LOCALE_ID} by
    * default).
    */
-  transform(value: number, pluralMap: {[count: string]: string}, locale?: string): string {
+  transform(
+    value: number | null | undefined,
+    pluralMap: {[count: string]: string},
+    locale?: string,
+  ): string {
     if (value == null) return '';
 
     if (typeof pluralMap !== 'object' || pluralMap === null) {

@@ -3,9 +3,12 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
+import {findEndOfBlock} from '../../utils';
+
+/** @nodoc */
 export interface LocalizeFn {
   (messageParts: TemplateStringsArray, ...expressions: readonly any[]): string;
 
@@ -38,9 +41,12 @@ export interface LocalizeFn {
   locale?: string;
 }
 
+/** @nodoc */
 export interface TranslateFn {
-  (messageParts: TemplateStringsArray,
-   expressions: readonly any[]): [TemplateStringsArray, readonly any[]];
+  (
+    messageParts: TemplateStringsArray,
+    expressions: readonly any[],
+  ): [TemplateStringsArray, readonly any[]];
 }
 
 /**
@@ -66,7 +72,7 @@ export interface TranslateFn {
  * ```
  *
  * This format is the same as that used for `i18n` markers in Angular templates. See the
- * [Angular 18n guide](guide/i18n#template-translations).
+ * [Angular i18n guide](guide/i18n/prepare#mark-text-in-component-template).
  *
  * **Naming placeholders**
  *
@@ -130,12 +136,18 @@ export interface TranslateFn {
  * the original template literal string without applying any translations to the parts. This
  * version is used during development or where there is no need to translate the localized
  * template literals.
+ *
  * @param messageParts a collection of the static parts of the template string.
  * @param expressions a collection of the values of each placeholder in the template string.
  * @returns the translated string, with the `messageParts` and `expressions` interleaved together.
+ *
+ * @globalApi
+ * @publicApi
  */
-export const $localize: LocalizeFn = function(
-    messageParts: TemplateStringsArray, ...expressions: readonly any[]) {
+export const $localize: LocalizeFn = function (
+  messageParts: TemplateStringsArray,
+  ...expressions: readonly any[]
+) {
   if ($localize.translate) {
     // Don't use array expansion here to avoid the compiler adding `__read()` helper unnecessarily.
     const translation = $localize.translate(messageParts, expressions);
@@ -165,33 +177,7 @@ const BLOCK_MARKER = ':';
  * @throws an error if the block is unterminated
  */
 function stripBlock(messagePart: string, rawMessagePart: string) {
-  return rawMessagePart.charAt(0) === BLOCK_MARKER ?
-      messagePart.substring(findEndOfBlock(messagePart, rawMessagePart) + 1) :
-      messagePart;
-}
-
-/**
- * Find the end of a "marked block" indicated by the first non-escaped colon.
- *
- * @param cooked The cooked string (where escaped chars have been processed)
- * @param raw The raw string (where escape sequences are still in place)
- *
- * @returns the index of the end of block marker
- * @throws an error if the block is unterminated
- */
-function findEndOfBlock(cooked: string, raw: string): number {
-  /***********************************************************************************************
-   * This function is repeated in `src/utils/messages.ts` and the two should be kept in sync.
-   * The reason is that this file is marked as having side-effects, and if we import `messages.ts`
-   * into it, the whole of `src/utils` will be included in this bundle and none of the functions
-   * will be tree shaken.
-   ***********************************************************************************************/
-  for (let cookedIndex = 1, rawIndex = 1; cookedIndex < cooked.length; cookedIndex++, rawIndex++) {
-    if (raw[rawIndex] === '\\') {
-      rawIndex++;
-    } else if (cooked[cookedIndex] === BLOCK_MARKER) {
-      return cookedIndex;
-    }
-  }
-  throw new Error(`Unterminated $localize metadata block in "${raw}".`);
+  return rawMessagePart.charAt(0) === BLOCK_MARKER
+    ? messagePart.substring(findEndOfBlock(messagePart, rawMessagePart) + 1)
+    : messagePart;
 }

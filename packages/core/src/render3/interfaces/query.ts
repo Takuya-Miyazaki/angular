@@ -3,11 +3,10 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {InjectionToken} from '../../di/injection_token';
-import {Type} from '../../interface/type';
+import {ProviderToken} from '../../di/provider_token';
 import {QueryList} from '../../linker/query_list';
 
 import {TNode} from './node';
@@ -17,10 +16,40 @@ import {TView} from './view';
  * An object representing query metadata extracted from query annotations.
  */
 export interface TQueryMetadata {
-  predicate: Type<any>|InjectionToken<unknown>|string[];
-  descendants: boolean;
+  predicate: ProviderToken<unknown> | string[];
   read: any;
-  isStatic: boolean;
+  flags: QueryFlags;
+}
+
+/**
+ * A set of flags to be used with Queries.
+ *
+ * NOTE: Ensure changes here are reflected in `packages/compiler/src/render3/view/compiler.ts`
+ */
+export const enum QueryFlags {
+  /**
+   * No flags
+   */
+  none = 0b0000,
+
+  /**
+   * Whether or not the query should descend into children.
+   */
+  descendants = 0b0001,
+
+  /**
+   * The query can be computed statically and hence can be assigned eagerly.
+   *
+   * NOTE: Backwards compatibility with ViewEngine.
+   */
+  isStatic = 0b0010,
+
+  /**
+   * If the `QueryList` should fire change event only if actual change to query was computed (vs old
+   * behavior where the change was fired whenever the query was recomputed, even if the recomputed
+   * query resulted in the same list.)
+   */
+  emitDistinctChangesOnly = 0b0100,
 }
 
 /**
@@ -58,7 +87,7 @@ export interface TQuery {
    * ng-template and ElementRef for other elements);
    * - a positive number - index of an injectable to be read from the element injector.
    */
-  matches: number[]|null;
+  matches: number[] | null;
 
   /**
    * A flag indicating if a given query crosses an <ng-template> element. This flag exists for
@@ -97,7 +126,7 @@ export interface TQuery {
    * @param tNode
    * @param childQueryIndex
    */
-  embeddedTView(tNode: TNode, childQueryIndex: number): TQuery|null;
+  embeddedTView(tNode: TNode, childQueryIndex: number): TQuery | null;
 }
 
 /**
@@ -150,7 +179,7 @@ export interface TQueries {
    * `embeddedTView` on each and every TQuery.
    * @param tNode
    */
-  embeddedTView(tNode: TNode): TQueries|null;
+  embeddedTView(tNode: TNode): TQueries | null;
 }
 
 /**
@@ -164,7 +193,7 @@ export interface LQuery<T> {
    * Materialized query matches for a given view only (!). Results are initialized lazily so the
    * array of matches is set to `null` initially.
    */
-  matches: (T|null)[]|null;
+  matches: (T | null)[] | null;
 
   /**
    * A QueryList where materialized query results should be reported.
@@ -197,7 +226,7 @@ export interface LQueries {
    * for a new embedded view is instantiated (cloned) from the declaration view.
    * @param tView
    */
-  createEmbeddedView(tView: TView): LQueries|null;
+  createEmbeddedView(tView: TView): LQueries | null;
 
   /**
    * A method called when an embedded view is inserted into a container. As a result all impacted
@@ -212,9 +241,13 @@ export interface LQueries {
    * @param tView
    */
   detachView(tView: TView): void;
+
+  /**
+   * A method called when a view finishes its creation pass. As a result all impacted
+   * `LQuery` objects (and associated `QueryList`) are marked as dirty. This additional dirty
+   * marking gives us a precise point in time where we can collect results for a given view in an
+   * atomic way.
+   * @param tView
+   */
+  finishViewCreation(tView: TView): void;
 }
-
-
-// Note: This hack is necessary so we don't erroneously get a circular dependency
-// failure based on types.
-export const unusedValueExportToPlacateAjd = 1;

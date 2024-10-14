@@ -3,21 +3,21 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {Component, NgModule} from '@angular/core';
 import {BrowserModule} from '@angular/platform-browser';
 
 import {AsyncObservablePipeComponent, AsyncPromisePipeComponent} from './async_pipe';
-import {CurrencyPipeComponent, DeprecatedCurrencyPipeComponent} from './currency_pipe';
+import {CurrencyPipeComponent} from './currency_pipe';
 import {DatePipeComponent, DeprecatedDatePipeComponent} from './date_pipe';
 import {I18nPluralPipeComponent, I18nSelectPipeComponent} from './i18n_pipe';
 import {JsonPipeComponent} from './json_pipe';
 import {KeyValuePipeComponent} from './keyvalue_pipe';
 import {LowerUpperPipeComponent} from './lowerupper_pipe';
-import {DeprecatedNumberPipeComponent, NumberPipeComponent} from './number_pipe';
-import {DeprecatedPercentPipeComponent, PercentPipeComponent} from './percent_pipe';
+import {NumberPipeComponent} from './number_pipe';
+import {PercentPipeComponent} from './percent_pipe';
 import {SlicePipeListComponent, SlicePipeStringComponent} from './slice_pipe';
 import {TitleCasePipeComponent} from './titlecase_pipe';
 
@@ -57,21 +57,30 @@ import {TitleCasePipeComponent} from './titlecase_pipe';
 
     <h2><code>keyvalue</code></h2>
     <keyvalue-pipe></keyvalue-pipe>
-  `
+  `,
+  standalone: false,
 })
-export class AppComponent {
-}
+export class AppComponent {}
 
 @NgModule({
   declarations: [
-    AsyncPromisePipeComponent, AsyncObservablePipeComponent, AppComponent, JsonPipeComponent,
-    DatePipeComponent, DeprecatedDatePipeComponent, LowerUpperPipeComponent, TitleCasePipeComponent,
-    NumberPipeComponent, DeprecatedNumberPipeComponent, PercentPipeComponent,
-    DeprecatedPercentPipeComponent, CurrencyPipeComponent, DeprecatedCurrencyPipeComponent,
-    SlicePipeStringComponent, SlicePipeListComponent, I18nPluralPipeComponent,
-    I18nSelectPipeComponent, KeyValuePipeComponent
+    AsyncPromisePipeComponent,
+    AsyncObservablePipeComponent,
+    AppComponent,
+    JsonPipeComponent,
+    DatePipeComponent,
+    DeprecatedDatePipeComponent,
+    LowerUpperPipeComponent,
+    TitleCasePipeComponent,
+    NumberPipeComponent,
+    PercentPipeComponent,
+    CurrencyPipeComponent,
+    SlicePipeStringComponent,
+    SlicePipeListComponent,
+    I18nPluralPipeComponent,
+    I18nSelectPipeComponent,
+    KeyValuePipeComponent,
   ],
   imports: [BrowserModule],
 })
-export class AppModule {
-}
+export class AppModule {}

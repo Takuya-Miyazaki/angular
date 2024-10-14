@@ -3,8 +3,9 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
+import {RuntimeError, RuntimeErrorCode} from '../errors';
 import {global} from '../util/global';
 
 import localeEn from './locale_en';
@@ -16,11 +17,12 @@ let LOCALE_DATA: {[localeId: string]: any} = {};
 
 /**
  * Register locale data to be used internally by Angular. See the
- * ["I18n guide"](guide/i18n#i18n-pipes) to know how to import additional locale data.
+ * ["I18n guide"](guide/i18n/format-data-locale) to know how to import additional locale
+ * data.
  *
  * The signature `registerLocaleData(data: any, extraData?: any)` is deprecated since v5.1
  */
-export function registerLocaleData(data: any, localeId?: string|any, extraData?: any): void {
+export function registerLocaleData(data: any, localeId?: string | any, extraData?: any): void {
   if (typeof localeId !== 'string') {
     extraData = localeId;
     localeId = data[LocaleDataIndex.LocaleId];
@@ -61,7 +63,10 @@ export function findLocaleData(locale: string): any {
     return localeEn;
   }
 
-  throw new Error(`Missing locale data for the locale "${locale}".`);
+  throw new RuntimeError(
+    RuntimeErrorCode.MISSING_LOCALE_DATA,
+    ngDevMode && `Missing locale data for the locale "${locale}".`,
+  );
 }
 
 /**
@@ -73,7 +78,7 @@ export function findLocaleData(locale: string): any {
  * @returns The code of the default currency for the given locale.
  *
  */
-export function getLocaleCurrencyCode(locale: string): string|null {
+export function getLocaleCurrencyCode(locale: string): string | null {
   const data = findLocaleData(locale);
   return data[LocaleDataIndex.CurrencyCode] || null;
 }
@@ -83,15 +88,13 @@ export function getLocaleCurrencyCode(locale: string): string|null {
  * for a given locale.
  * @param locale A locale code for the locale format rules to use.
  * @returns The plural function for the locale.
- * @see `NgPlural`
- * @see [Internationalization (i18n) Guide](https://angular.io/guide/i18n)
+ * @see {@link NgPlural}
+ * @see [Internationalization (i18n) Guide](guide/i18n)
  */
 export function getLocalePluralCase(locale: string): (value: number) => number {
   const data = findLocaleData(locale);
   return data[LocaleDataIndex.PluralCase];
 }
-
-
 
 /**
  * Helper function to get the given `normalizedLocale` from `LOCALE_DATA`
@@ -99,8 +102,11 @@ export function getLocalePluralCase(locale: string): (value: number) => number {
  */
 export function getLocaleData(normalizedLocale: string): any {
   if (!(normalizedLocale in LOCALE_DATA)) {
-    LOCALE_DATA[normalizedLocale] = global.ng && global.ng.common && global.ng.common.locales &&
-        global.ng.common.locales[normalizedLocale];
+    LOCALE_DATA[normalizedLocale] =
+      global.ng &&
+      global.ng.common &&
+      global.ng.common.locales &&
+      global.ng.common.locales[normalizedLocale];
   }
   return LOCALE_DATA[normalizedLocale];
 }
@@ -137,7 +143,7 @@ export enum LocaleDataIndex {
   Currencies,
   Directionality,
   PluralCase,
-  ExtraData
+  ExtraData,
 }
 
 /**
@@ -146,7 +152,7 @@ export enum LocaleDataIndex {
 export const enum ExtraLocaleDataIndex {
   ExtraDayPeriodFormats = 0,
   ExtraDayPeriodStandalone,
-  ExtraDayPeriodsRules
+  ExtraDayPeriodsRules,
 }
 
 /**
@@ -155,7 +161,7 @@ export const enum ExtraLocaleDataIndex {
 export const enum CurrencyIndex {
   Symbol = 0,
   SymbolNarrow,
-  NbOfDigits
+  NbOfDigits,
 }
 
 /**

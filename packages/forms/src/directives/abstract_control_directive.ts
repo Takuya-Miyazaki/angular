@@ -3,12 +3,21 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {Observable} from 'rxjs';
-import {AbstractControl} from '../model';
-import {ValidationErrors} from './validators';
+
+import {AbstractControl} from '../model/abstract_model';
+import {composeAsyncValidators, composeValidators} from '../validators';
+
+import {
+  AsyncValidator,
+  AsyncValidatorFn,
+  ValidationErrors,
+  Validator,
+  ValidatorFn,
+} from './validators';
 
 /**
  * @description
@@ -25,7 +34,7 @@ export abstract class AbstractControlDirective {
    *
    * @returns the control that backs this directive. Most properties fall through to that instance.
    */
-  abstract get control(): AbstractControl|null;
+  abstract get control(): AbstractControl | null;
 
   /**
    * @description
@@ -41,7 +50,7 @@ export abstract class AbstractControlDirective {
    * validation errors exist with the current value.
    * If the control is not present, null is returned.
    */
-  get valid(): boolean|null {
+  get valid(): boolean | null {
     return this.control ? this.control.valid : null;
   }
 
@@ -50,17 +59,17 @@ export abstract class AbstractControlDirective {
    * Reports whether the control is invalid, meaning that an error exists in the input value.
    * If the control is not present, null is returned.
    */
-  get invalid(): boolean|null {
+  get invalid(): boolean | null {
     return this.control ? this.control.invalid : null;
   }
 
   /**
    * @description
-   * Reports whether a control is pending, meaning that that async validation is occurring and
+   * Reports whether a control is pending, meaning that async validation is occurring and
    * errors are not yet available for the input value. If the control is not present, null is
    * returned.
    */
-  get pending(): boolean|null {
+  get pending(): boolean | null {
     return this.control ? this.control.pending : null;
   }
 
@@ -70,7 +79,7 @@ export abstract class AbstractControlDirective {
    * in the UI and is exempt from validation checks and excluded from aggregate
    * values of ancestor controls. If the control is not present, null is returned.
    */
-  get disabled(): boolean|null {
+  get disabled(): boolean | null {
     return this.control ? this.control.disabled : null;
   }
 
@@ -79,7 +88,7 @@ export abstract class AbstractControlDirective {
    * Reports whether the control is enabled, meaning that the control is included in ancestor
    * calculations of validity or value. If the control is not present, null is returned.
    */
-  get enabled(): boolean|null {
+  get enabled(): boolean | null {
     return this.control ? this.control.enabled : null;
   }
 
@@ -87,7 +96,7 @@ export abstract class AbstractControlDirective {
    * @description
    * Reports the control's validation errors. If the control is not present, null is returned.
    */
-  get errors(): ValidationErrors|null {
+  get errors(): ValidationErrors | null {
     return this.control ? this.control.errors : null;
   }
 
@@ -96,7 +105,7 @@ export abstract class AbstractControlDirective {
    * Reports whether the control is pristine, meaning that the user has not yet changed
    * the value in the UI. If the control is not present, null is returned.
    */
-  get pristine(): boolean|null {
+  get pristine(): boolean | null {
     return this.control ? this.control.pristine : null;
   }
 
@@ -105,7 +114,7 @@ export abstract class AbstractControlDirective {
    * Reports whether the control is dirty, meaning that the user has changed
    * the value in the UI. If the control is not present, null is returned.
    */
-  get dirty(): boolean|null {
+  get dirty(): boolean | null {
     return this.control ? this.control.dirty : null;
   }
 
@@ -114,7 +123,7 @@ export abstract class AbstractControlDirective {
    * Reports whether the control is touched, meaning that the user has triggered
    * a `blur` event on it. If the control is not present, null is returned.
    */
-  get touched(): boolean|null {
+  get touched(): boolean | null {
     return this.control ? this.control.touched : null;
   }
 
@@ -124,7 +133,7 @@ export abstract class AbstractControlDirective {
    * 'VALID', 'INVALID', 'DISABLED', and 'PENDING'.
    * If the control is not present, null is returned.
    */
-  get status(): string|null {
+  get status(): string | null {
     return this.control ? this.control.status : null;
   }
 
@@ -133,7 +142,7 @@ export abstract class AbstractControlDirective {
    * Reports whether the control is untouched, meaning that the user has not yet triggered
    * a `blur` event on it. If the control is not present, null is returned.
    */
-  get untouched(): boolean|null {
+  get untouched(): boolean | null {
     return this.control ? this.control.untouched : null;
   }
 
@@ -142,7 +151,7 @@ export abstract class AbstractControlDirective {
    * Returns a multicasting observable that emits a validation status whenever it is
    * calculated for the control. If the control is not present, null is returned.
    */
-  get statusChanges(): Observable<any>|null {
+  get statusChanges(): Observable<any> | null {
     return this.control ? this.control.statusChanges : null;
   }
 
@@ -152,7 +161,7 @@ export abstract class AbstractControlDirective {
    * value of the control changes in the UI or programmatically.
    * If the control is not present, null is returned.
    */
-  get valueChanges(): Observable<any>|null {
+  get valueChanges(): Observable<any> | null {
     return this.control ? this.control.valueChanges : null;
   }
 
@@ -161,8 +170,93 @@ export abstract class AbstractControlDirective {
    * Returns an array that represents the path from the top-level form to this control.
    * Each index is the string name of the control on that level.
    */
-  get path(): string[]|null {
+  get path(): string[] | null {
     return null;
+  }
+
+  /**
+   * Contains the result of merging synchronous validators into a single validator function
+   * (combined using `Validators.compose`).
+   */
+  private _composedValidatorFn: ValidatorFn | null | undefined;
+
+  /**
+   * Contains the result of merging asynchronous validators into a single validator function
+   * (combined using `Validators.composeAsync`).
+   */
+  private _composedAsyncValidatorFn: AsyncValidatorFn | null | undefined;
+
+  /**
+   * Set of synchronous validators as they were provided while calling `setValidators` function.
+   * @internal
+   */
+  _rawValidators: Array<Validator | ValidatorFn> = [];
+
+  /**
+   * Set of asynchronous validators as they were provided while calling `setAsyncValidators`
+   * function.
+   * @internal
+   */
+  _rawAsyncValidators: Array<AsyncValidator | AsyncValidatorFn> = [];
+
+  /**
+   * Sets synchronous validators for this directive.
+   * @internal
+   */
+  _setValidators(validators: Array<Validator | ValidatorFn> | undefined): void {
+    this._rawValidators = validators || [];
+    this._composedValidatorFn = composeValidators(this._rawValidators);
+  }
+
+  /**
+   * Sets asynchronous validators for this directive.
+   * @internal
+   */
+  _setAsyncValidators(validators: Array<AsyncValidator | AsyncValidatorFn> | undefined): void {
+    this._rawAsyncValidators = validators || [];
+    this._composedAsyncValidatorFn = composeAsyncValidators(this._rawAsyncValidators);
+  }
+
+  /**
+   * @description
+   * Synchronous validator function composed of all the synchronous validators registered with this
+   * directive.
+   */
+  get validator(): ValidatorFn | null {
+    return this._composedValidatorFn || null;
+  }
+
+  /**
+   * @description
+   * Asynchronous validator function composed of all the asynchronous validators registered with
+   * this directive.
+   */
+  get asyncValidator(): AsyncValidatorFn | null {
+    return this._composedAsyncValidatorFn || null;
+  }
+
+  /*
+   * The set of callbacks to be invoked when directive instance is being destroyed.
+   */
+  private _onDestroyCallbacks: (() => void)[] = [];
+
+  /**
+   * Internal function to register callbacks that should be invoked
+   * when directive instance is being destroyed.
+   * @internal
+   */
+  _registerOnDestroy(fn: () => void): void {
+    this._onDestroyCallbacks.push(fn);
+  }
+
+  /**
+   * Internal function to invoke all registered "on destroy" callbacks.
+   * Note: calling this function also clears the list of callbacks.
+   * @internal
+   */
+  _invokeOnDestroyCallbacks(): void {
+    this._onDestroyCallbacks.forEach((fn) => fn());
+    this._onDestroyCallbacks = [];
   }
 
   /**
@@ -203,7 +297,7 @@ export abstract class AbstractControlDirective {
    *
    * If the control is not present, false is returned.
    */
-  hasError(errorCode: string, path?: Array<string|number>|string): boolean {
+  hasError(errorCode: string, path?: Array<string | number> | string): boolean {
     return this.control ? this.control.hasError(errorCode, path) : false;
   }
 
@@ -234,7 +328,7 @@ export abstract class AbstractControlDirective {
    * @returns error data for that particular error. If the control or error is not present,
    * null is returned.
    */
-  getError(errorCode: string, path?: Array<string|number>|string): any {
+  getError(errorCode: string, path?: Array<string | number> | string): any {
     return this.control ? this.control.getError(errorCode, path) : null;
   }
 }

@@ -3,14 +3,14 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 export class MockBody implements Body {
   readonly body!: ReadableStream;
   bodyUsed: boolean = false;
 
-  constructor(public _body: string|null) {}
+  constructor(public _body: string | null) {}
 
   async arrayBuffer(): Promise<ArrayBuffer> {
     const body = this.getBody();
@@ -29,7 +29,7 @@ export class MockBody implements Body {
   }
 
   async json(): Promise<any> {
-    return JSON.parse(this.getBody());
+    return JSON.parse(this.getBody()) as any;
   }
 
   async text(): Promise<string> {
@@ -75,7 +75,7 @@ export class MockHeaders implements Headers {
     this.map.forEach(callback as any);
   }
 
-  get(name: string): string|null {
+  get(name: string): string | null {
     return this.map.get(name.toLowerCase()) || null;
   }
 
@@ -94,14 +94,17 @@ export class MockHeaders implements Headers {
   values() {
     return this.map.values();
   }
+
+  getSetCookie(): string[] {
+    return [];
+  }
 }
 
 export class MockRequest extends MockBody implements Request {
   readonly isHistoryNavigation: boolean = false;
   readonly isReloadNavigation: boolean = false;
-  readonly body!: ReadableStream;
   readonly cache: RequestCache = 'default';
-  readonly credentials: RequestCredentials = 'omit';
+  readonly credentials: RequestCredentials = 'same-origin';
   readonly destination: RequestDestination = 'document';
   readonly headers: Headers = new MockHeaders();
   readonly integrity: string = '';
@@ -115,8 +118,8 @@ export class MockRequest extends MockBody implements Request {
 
   url: string;
 
-  constructor(input: string|Request, init: RequestInit = {}) {
-    super(init !== undefined ? (init.body as (string | null)) || null : null);
+  constructor(input: string | Request, init: RequestInit = {}) {
+    super((init.body as string | null) ?? null);
     if (typeof input !== 'string') {
       throw 'Not implemented';
     }
@@ -126,7 +129,7 @@ export class MockRequest extends MockBody implements Request {
       if (headers instanceof MockHeaders) {
         this.headers = headers;
       } else {
-        Object.keys(headers).forEach(header => {
+        Object.keys(headers).forEach((header) => {
           this.headers.set(header, headers[header]);
         });
       }
@@ -149,9 +152,12 @@ export class MockRequest extends MockBody implements Request {
     if (this.bodyUsed) {
       throw 'Body already consumed';
     }
-    return new MockRequest(
-        this.url,
-        {body: this._body, mode: this.mode, credentials: this.credentials, headers: this.headers});
+    return new MockRequest(this.url, {
+      body: this._body,
+      mode: this.mode,
+      credentials: this.credentials,
+      headers: this.headers,
+    });
   }
 }
 
@@ -168,17 +174,18 @@ export class MockResponse extends MockBody implements Response {
   readonly redirected: boolean = false;
 
   constructor(
-      body?: any,
-      init: ResponseInit&{type?: ResponseType, redirected?: boolean, url?: string} = {}) {
+    body?: any,
+    init: ResponseInit & {type?: ResponseType; redirected?: boolean; url?: string} = {},
+  ) {
     super(typeof body === 'string' ? body : null);
-    this.status = (init.status !== undefined) ? init.status : 200;
-    this.statusText = init.statusText || 'OK';
+    this.status = init.status !== undefined ? init.status : 200;
+    this.statusText = init.statusText !== undefined ? init.statusText : 'OK';
     const headers = init.headers as {[key: string]: string};
     if (headers !== undefined) {
       if (headers instanceof MockHeaders) {
         this.headers = headers;
       } else {
-        Object.keys(headers).forEach(header => {
+        Object.keys(headers).forEach((header) => {
           this.headers.set(header, headers[header]);
         });
       }
@@ -198,7 +205,13 @@ export class MockResponse extends MockBody implements Response {
     if (this.bodyUsed) {
       throw 'Body already consumed';
     }
-    return new MockResponse(
-        this._body, {status: this.status, statusText: this.statusText, headers: this.headers});
+    return new MockResponse(this._body, {
+      status: this.status,
+      statusText: this.statusText,
+      headers: this.headers,
+      type: this.type,
+      redirected: this.redirected,
+      url: this.url,
+    });
   }
 }

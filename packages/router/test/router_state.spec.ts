@@ -3,13 +3,20 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {BehaviorSubject} from 'rxjs';
 
-import {ActivatedRoute, ActivatedRouteSnapshot, advanceActivatedRoute, equalParamsAndUrlSegments, RouterState, RouterStateSnapshot} from '../src/router_state';
-import {Params} from '../src/shared';
+import {
+  ActivatedRoute,
+  ActivatedRouteSnapshot,
+  advanceActivatedRoute,
+  equalParamsAndUrlSegments,
+  RouterState,
+  RouterStateSnapshot,
+} from '../src/router_state';
+import {Params, RouteTitleKey} from '../src/shared';
 import {UrlSegment} from '../src/url_tree';
 import {TreeNode} from '../src/utils/tree';
 
@@ -71,7 +78,7 @@ describe('RouterState & Snapshot', () => {
 
       const root = new TreeNode(a, [new TreeNode(b, []), new TreeNode(c, [])]);
 
-      state = new (RouterState as any)(root, <any>null);
+      state = new (RouterState as any)(root, null);
     });
 
     it('should return first child', () => {
@@ -105,15 +112,27 @@ describe('RouterState & Snapshot', () => {
   describe('equalParamsAndUrlSegments', () => {
     function createSnapshot(params: Params, url: UrlSegment[]): ActivatedRouteSnapshot {
       const snapshot = new (ActivatedRouteSnapshot as any)(
-          url, params, <any>null, <any>null, <any>null, <any>null, <any>null, <any>null, <any>null,
-          -1, null!);
+        url,
+        params,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        -1,
+        null,
+      );
       snapshot._routerState = new (RouterStateSnapshot as any)('', new TreeNode(snapshot, []));
       return snapshot;
     }
 
     function createSnapshotPairWithParent(
-        params: [Params, Params], parentParams: [Params, Params],
-        urls: [string, string]): [ActivatedRouteSnapshot, ActivatedRouteSnapshot] {
+      params: [Params, Params],
+      parentParams: [Params, Params],
+      urls: [string, string],
+    ): [ActivatedRouteSnapshot, ActivatedRouteSnapshot] {
       const snapshot1 = createSnapshot(params[0], []);
       const snapshot2 = createSnapshot(params[1], []);
 
@@ -121,49 +140,67 @@ describe('RouterState & Snapshot', () => {
       const snapshot2Parent = createSnapshot(parentParams[1], [new UrlSegment(urls[1], {})]);
 
       (snapshot1 as any)._routerState = new (RouterStateSnapshot as any)(
-          '', new TreeNode(snapshot1Parent, [new TreeNode(snapshot1, [])]));
+        '',
+        new TreeNode(snapshot1Parent, [new TreeNode(snapshot1, [])]),
+      );
       (snapshot2 as any)._routerState = new (RouterStateSnapshot as any)(
-          '', new TreeNode(snapshot2Parent, [new TreeNode(snapshot2, [])]));
+        '',
+        new TreeNode(snapshot2Parent, [new TreeNode(snapshot2, [])]),
+      );
 
       return [snapshot1, snapshot2];
     }
 
     it('should return false when params are different', () => {
-      expect(equalParamsAndUrlSegments(createSnapshot({a: '1'}, []), createSnapshot({a: '2'}, [])))
-          .toEqual(false);
+      expect(
+        equalParamsAndUrlSegments(createSnapshot({a: '1'}, []), createSnapshot({a: '2'}, [])),
+      ).toEqual(false);
     });
 
     it('should return false when urls are different', () => {
-      expect(equalParamsAndUrlSegments(
-                 createSnapshot({a: '1'}, [new UrlSegment('a', {})]),
-                 createSnapshot({a: '1'}, [new UrlSegment('b', {})])))
-          .toEqual(false);
+      expect(
+        equalParamsAndUrlSegments(
+          createSnapshot({a: '1'}, [new UrlSegment('a', {})]),
+          createSnapshot({a: '1'}, [new UrlSegment('b', {})]),
+        ),
+      ).toEqual(false);
     });
 
     it('should return true othewise', () => {
-      expect(equalParamsAndUrlSegments(
-                 createSnapshot({a: '1'}, [new UrlSegment('a', {})]),
-                 createSnapshot({a: '1'}, [new UrlSegment('a', {})])))
-          .toEqual(true);
+      expect(
+        equalParamsAndUrlSegments(
+          createSnapshot({a: '1'}, [new UrlSegment('a', {})]),
+          createSnapshot({a: '1'}, [new UrlSegment('a', {})]),
+        ),
+      ).toEqual(true);
     });
 
     it('should return false when upstream params are different', () => {
-      const [snapshot1, snapshot2] =
-          createSnapshotPairWithParent([{a: '1'}, {a: '1'}], [{b: '1'}, {c: '1'}], ['a', 'a']);
+      const [snapshot1, snapshot2] = createSnapshotPairWithParent(
+        [{a: '1'}, {a: '1'}],
+        [{b: '1'}, {c: '1'}],
+        ['a', 'a'],
+      );
 
       expect(equalParamsAndUrlSegments(snapshot1, snapshot2)).toEqual(false);
     });
 
     it('should return false when upstream urls are different', () => {
-      const [snapshot1, snapshot2] =
-          createSnapshotPairWithParent([{a: '1'}, {a: '1'}], [{b: '1'}, {b: '1'}], ['a', 'b']);
+      const [snapshot1, snapshot2] = createSnapshotPairWithParent(
+        [{a: '1'}, {a: '1'}],
+        [{b: '1'}, {b: '1'}],
+        ['a', 'b'],
+      );
 
       expect(equalParamsAndUrlSegments(snapshot1, snapshot2)).toEqual(false);
     });
 
     it('should return true when upstream urls and params are equal', () => {
-      const [snapshot1, snapshot2] =
-          createSnapshotPairWithParent([{a: '1'}, {a: '1'}], [{b: '1'}, {b: '1'}], ['a', 'a']);
+      const [snapshot1, snapshot2] = createSnapshotPairWithParent(
+        [{a: '1'}, {a: '1'}],
+        [{b: '1'}, {b: '1'}],
+        ['a', 'a'],
+      );
 
       expect(equalParamsAndUrlSegments(snapshot1, snapshot2)).toEqual(true);
     });
@@ -181,8 +218,18 @@ describe('RouterState & Snapshot', () => {
       const fragment = '';
       const data = {};
       const snapshot = new (ActivatedRouteSnapshot as any)(
-          url, params, queryParams, fragment, data, <any>null, <any>null, <any>null, <any>null, -1,
-          null!);
+        url,
+        params,
+        queryParams,
+        fragment,
+        data,
+        null,
+        null,
+        null,
+        null,
+        -1,
+        null,
+      );
       const state = new (RouterStateSnapshot as any)('', new TreeNode(snapshot, []));
       snapshot._routerState = state;
       return snapshot;
@@ -202,16 +249,63 @@ describe('RouterState & Snapshot', () => {
       expect(hasSeenDataChange).toEqual(true);
     });
   });
+
+  describe('ActivatedRoute', () => {
+    it('should get resolved route title', () => {
+      const data = {[RouteTitleKey]: 'resolved title'};
+      const route = createActivatedRoute('a');
+      const snapshot = new (ActivatedRouteSnapshot as any)(
+        [],
+        null,
+        null,
+        null,
+        data,
+        null,
+        'test',
+        null,
+        null,
+        -1,
+        null!,
+      );
+      let resolvedTitle: string | undefined;
+
+      route.data.next(data);
+
+      route.title.forEach((title: string | undefined) => {
+        resolvedTitle = title;
+      });
+
+      expect(resolvedTitle).toEqual('resolved title');
+      expect(snapshot.title).toEqual('resolved title');
+    });
+  });
 });
 
 function createActivatedRouteSnapshot(cmp: string) {
   return new (ActivatedRouteSnapshot as any)(
-      <any>[], <any>null, <any>null, <any>null, <any>null, <any>null, <any>cmp, <any>null,
-      <any>null, -1, null!);
+    [],
+    null,
+    null,
+    null,
+    null,
+    null,
+    cmp,
+    null,
+    null,
+    -1,
+    null!,
+  );
 }
 
 function createActivatedRoute(cmp: string) {
   return new (ActivatedRoute as any)(
-      new BehaviorSubject([new UrlSegment('', {})]), new BehaviorSubject({}), <any>null, <any>null,
-      new BehaviorSubject({}), <any>null, <any>cmp, <any>null);
+    new BehaviorSubject([new UrlSegment('', {})]),
+    new BehaviorSubject({}),
+    null,
+    null,
+    new BehaviorSubject({}),
+    null,
+    cmp,
+    null,
+  );
 }

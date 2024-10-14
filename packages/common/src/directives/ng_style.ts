@@ -3,10 +3,19 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
-import {Directive, DoCheck, ElementRef, Input, KeyValueChanges, KeyValueDiffer, KeyValueDiffers, Renderer2} from '@angular/core';
-
+import {
+  Directive,
+  DoCheck,
+  ElementRef,
+  Input,
+  KeyValueChanges,
+  KeyValueDiffer,
+  KeyValueDiffers,
+  Renderer2,
+  RendererStyleFlags2,
+} from '@angular/core';
 
 /**
  * @ngModule CommonModule
@@ -44,16 +53,22 @@ import {Directive, DoCheck, ElementRef, Input, KeyValueChanges, KeyValueDiffer, 
  *
  * @publicApi
  */
-@Directive({selector: '[ngStyle]'})
+@Directive({
+  selector: '[ngStyle]',
+  standalone: true,
+})
 export class NgStyle implements DoCheck {
-  private _ngStyle: {[key: string]: string}|null = null;
-  private _differ: KeyValueDiffer<string, string|number>|null = null;
+  private _ngStyle: {[key: string]: string} | null | undefined = null;
+  private _differ: KeyValueDiffer<string, string | number> | null = null;
 
   constructor(
-      private _ngEl: ElementRef, private _differs: KeyValueDiffers, private _renderer: Renderer2) {}
+    private _ngEl: ElementRef,
+    private _differs: KeyValueDiffers,
+    private _renderer: Renderer2,
+  ) {}
 
   @Input('ngStyle')
-  set ngStyle(values: {[klass: string]: any}|null) {
+  set ngStyle(values: {[klass: string]: any} | null | undefined) {
     this._ngStyle = values;
     if (!this._differ && values) {
       this._differ = this._differs.find(values).create();
@@ -69,18 +84,23 @@ export class NgStyle implements DoCheck {
     }
   }
 
-  private _setStyle(nameAndUnit: string, value: string|number|null|undefined): void {
+  private _setStyle(nameAndUnit: string, value: string | number | null | undefined): void {
     const [name, unit] = nameAndUnit.split('.');
-    value = value != null && unit ? `${value}${unit}` : value;
+    const flags = name.indexOf('-') === -1 ? undefined : (RendererStyleFlags2.DashCase as number);
 
     if (value != null) {
-      this._renderer.setStyle(this._ngEl.nativeElement, name, value as string);
+      this._renderer.setStyle(
+        this._ngEl.nativeElement,
+        name,
+        unit ? `${value}${unit}` : value,
+        flags,
+      );
     } else {
-      this._renderer.removeStyle(this._ngEl.nativeElement, name);
+      this._renderer.removeStyle(this._ngEl.nativeElement, name, flags);
     }
   }
 
-  private _applyChanges(changes: KeyValueChanges<string, string|number>): void {
+  private _applyChanges(changes: KeyValueChanges<string, string | number>): void {
     changes.forEachRemovedItem((record) => this._setStyle(record.key, null));
     changes.forEachAddedItem((record) => this._setStyle(record.key, record.currentValue));
     changes.forEachChangedItem((record) => this._setStyle(record.key, record.currentValue));

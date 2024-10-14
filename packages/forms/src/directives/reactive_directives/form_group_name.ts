@@ -3,48 +3,60 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {Directive, forwardRef, Host, Inject, Input, OnDestroy, OnInit, Optional, Self, SkipSelf} from '@angular/core';
+import {
+  Directive,
+  forwardRef,
+  Host,
+  Inject,
+  Input,
+  OnDestroy,
+  OnInit,
+  Optional,
+  Provider,
+  Self,
+  SkipSelf,
+} from '@angular/core';
 
-import {FormArray} from '../../model';
+import {FormArray} from '../../model/form_array';
 import {NG_ASYNC_VALIDATORS, NG_VALIDATORS} from '../../validators';
 import {AbstractFormGroupDirective} from '../abstract_form_group_directive';
 import {ControlContainer} from '../control_container';
-import {ReactiveErrors} from '../reactive_errors';
-import {composeAsyncValidators, composeValidators, controlPath} from '../shared';
-import {AsyncValidatorFn, ValidatorFn} from '../validators';
+import {arrayParentException, groupParentException} from '../reactive_errors';
+import {controlPath} from '../shared';
+import {AsyncValidator, AsyncValidatorFn, Validator, ValidatorFn} from '../validators';
 
 import {FormGroupDirective} from './form_group_directive';
 
-export const formGroupNameProvider: any = {
+const formGroupNameProvider: Provider = {
   provide: ControlContainer,
-  useExisting: forwardRef(() => FormGroupName)
+  useExisting: forwardRef(() => FormGroupName),
 };
 
 /**
  * @description
  *
- * Syncs a nested `FormGroup` to a DOM element.
+ * Syncs a nested `FormGroup` or `FormRecord` to a DOM element.
  *
  * This directive can only be used with a parent `FormGroupDirective`.
  *
- * It accepts the string name of the nested `FormGroup` to link, and
- * looks for a `FormGroup` registered with that name in the parent
+ * It accepts the string name of the nested `FormGroup` or `FormRecord` to link, and
+ * looks for a `FormGroup` or `FormRecord` registered with that name in the parent
  * `FormGroup` instance you passed into `FormGroupDirective`.
  *
  * Use nested form groups to validate a sub-group of a
  * form separately from the rest or to group the values of certain
  * controls into their own nested object.
  *
- * @see [Reactive Forms Guide](guide/reactive-forms)
+ * @see [Reactive Forms Guide](guide/forms/reactive-forms)
  *
  * @usageNotes
  *
  * ### Access the group by name
  *
- * The following example uses the {@link AbstractControl#get get} method to access the
+ * The following example uses the `AbstractControl.get` method to access the
  * associated `FormGroup`
  *
  * ```ts
@@ -53,7 +65,7 @@ export const formGroupNameProvider: any = {
  *
  * ### Access individual controls in the group
  *
- * The following example uses the {@link AbstractControl#get get} method to access
+ * The following example uses the `AbstractControl.get` method to access
  * individual controls within the group using dot syntax.
  *
  * ```ts
@@ -70,7 +82,11 @@ export const formGroupNameProvider: any = {
  * @ngModule ReactiveFormsModule
  * @publicApi
  */
-@Directive({selector: '[formGroupName]', providers: [formGroupNameProvider]})
+@Directive({
+  selector: '[formGroupName]',
+  providers: [formGroupNameProvider],
+  standalone: false,
+})
 export class FormGroupName extends AbstractFormGroupDirective implements OnInit, OnDestroy {
   /**
    * @description
@@ -81,30 +97,33 @@ export class FormGroupName extends AbstractFormGroupDirective implements OnInit,
    * while the numerical form allows for form groups to be bound
    * to indices when iterating over groups in a `FormArray`.
    */
-  // TODO(issue/24571): remove '!'.
-  @Input('formGroupName') name!: string|number|null;
+  @Input('formGroupName') override name: string | number | null = null;
 
   constructor(
-      @Optional() @Host() @SkipSelf() parent: ControlContainer,
-      @Optional() @Self() @Inject(NG_VALIDATORS) validators: any[],
-      @Optional() @Self() @Inject(NG_ASYNC_VALIDATORS) asyncValidators: any[]) {
+    @Optional() @Host() @SkipSelf() parent: ControlContainer,
+    @Optional() @Self() @Inject(NG_VALIDATORS) validators: (Validator | ValidatorFn)[],
+    @Optional()
+    @Self()
+    @Inject(NG_ASYNC_VALIDATORS)
+    asyncValidators: (AsyncValidator | AsyncValidatorFn)[],
+  ) {
     super();
     this._parent = parent;
-    this._validators = validators;
-    this._asyncValidators = asyncValidators;
+    this._setValidators(validators);
+    this._setAsyncValidators(asyncValidators);
   }
 
   /** @internal */
-  _checkParentType(): void {
+  override _checkParentType(): void {
     if (_hasInvalidParent(this._parent) && (typeof ngDevMode === 'undefined' || ngDevMode)) {
-      ReactiveErrors.groupParentException();
+      throw groupParentException();
     }
   }
 }
 
 export const formArrayNameProvider: any = {
   provide: ControlContainer,
-  useExisting: forwardRef(() => FormArrayName)
+  useExisting: forwardRef(() => FormArrayName),
 };
 
 /**
@@ -119,8 +138,8 @@ export const formArrayNameProvider: any = {
  * will look for a `FormArray` registered with that name in the parent
  * `FormGroup` instance you passed into `FormGroupDirective`.
  *
- * @see [Reactive Forms Guide](guide/reactive-forms)
- * @see `AbstractControl`
+ * @see [Reactive Forms Guide](guide/forms/reactive-forms)
+ * @see {@link AbstractControl}
  *
  * @usageNotes
  *
@@ -131,16 +150,14 @@ export const formArrayNameProvider: any = {
  * @ngModule ReactiveFormsModule
  * @publicApi
  */
-@Directive({selector: '[formArrayName]', providers: [formArrayNameProvider]})
+@Directive({
+  selector: '[formArrayName]',
+  providers: [formArrayNameProvider],
+  standalone: false,
+})
 export class FormArrayName extends ControlContainer implements OnInit, OnDestroy {
   /** @internal */
   _parent: ControlContainer;
-
-  /** @internal */
-  _validators: any[];
-
-  /** @internal */
-  _asyncValidators: any[];
 
   /**
    * @description
@@ -151,17 +168,20 @@ export class FormArrayName extends ControlContainer implements OnInit, OnDestroy
    * while the numerical form allows for form arrays to be bound
    * to indices when iterating over arrays in a `FormArray`.
    */
-  // TODO(issue/24571): remove '!'.
-  @Input('formArrayName') name!: string|number|null;
+  @Input('formArrayName') override name: string | number | null = null;
 
   constructor(
-      @Optional() @Host() @SkipSelf() parent: ControlContainer,
-      @Optional() @Self() @Inject(NG_VALIDATORS) validators: any[],
-      @Optional() @Self() @Inject(NG_ASYNC_VALIDATORS) asyncValidators: any[]) {
+    @Optional() @Host() @SkipSelf() parent: ControlContainer,
+    @Optional() @Self() @Inject(NG_VALIDATORS) validators: (Validator | ValidatorFn)[],
+    @Optional()
+    @Self()
+    @Inject(NG_ASYNC_VALIDATORS)
+    asyncValidators: (AsyncValidator | AsyncValidatorFn)[],
+  ) {
     super();
     this._parent = parent;
-    this._validators = validators;
-    this._asyncValidators = asyncValidators;
+    this._setValidators(validators);
+    this._setAsyncValidators(asyncValidators);
   }
 
   /**
@@ -188,7 +208,7 @@ export class FormArrayName extends ControlContainer implements OnInit, OnDestroy
    * @description
    * The `FormArray` bound to this directive.
    */
-  get control(): FormArray {
+  override get control(): FormArray {
     return this.formDirective!.getFormArray(this);
   }
 
@@ -196,7 +216,7 @@ export class FormArrayName extends ControlContainer implements OnInit, OnDestroy
    * @description
    * The top-level directive for this group if present, otherwise null.
    */
-  get formDirective(): FormGroupDirective|null {
+  override get formDirective(): FormGroupDirective | null {
     return this._parent ? <FormGroupDirective>this._parent.formDirective : null;
   }
 
@@ -205,35 +225,21 @@ export class FormArrayName extends ControlContainer implements OnInit, OnDestroy
    * Returns an array that represents the path from the top-level form to this control.
    * Each index is the string name of the control on that level.
    */
-  get path(): string[] {
+  override get path(): string[] {
     return controlPath(this.name == null ? this.name : this.name.toString(), this._parent);
-  }
-
-  /**
-   * @description
-   * Synchronous validator function composed of all the synchronous validators registered with this
-   * directive.
-   */
-  get validator(): ValidatorFn|null {
-    return composeValidators(this._validators);
-  }
-
-  /**
-   * @description
-   * Async validator function composed of all the async validators registered with this directive.
-   */
-  get asyncValidator(): AsyncValidatorFn|null {
-    return composeAsyncValidators(this._asyncValidators);
   }
 
   private _checkParentType(): void {
     if (_hasInvalidParent(this._parent) && (typeof ngDevMode === 'undefined' || ngDevMode)) {
-      ReactiveErrors.arrayParentException();
+      throw arrayParentException();
     }
   }
 }
 
 function _hasInvalidParent(parent: ControlContainer): boolean {
-  return !(parent instanceof FormGroupName) && !(parent instanceof FormGroupDirective) &&
-      !(parent instanceof FormArrayName);
+  return (
+    !(parent instanceof FormGroupName) &&
+    !(parent instanceof FormGroupDirective) &&
+    !(parent instanceof FormArrayName)
+  );
 }

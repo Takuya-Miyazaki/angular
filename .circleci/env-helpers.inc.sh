@@ -31,7 +31,10 @@ function setSecretVar() {
   local -r originalShellOptions=$(set +o);
   set +x -eu -o pipefail;
 
-  echo "export $1=\"${2:-}\";" >> $BASH_ENV;
+  local assignmentStatement="export $1=\"${2:-}\";"
+
+  echo "${assignmentStatement}" >> $BASH_ENV;
+  eval "${assignmentStatement}"
 
   # Restore original shell options.
   eval "$originalShellOptions";
@@ -41,7 +44,7 @@ function setSecretVar() {
 # Create a function to set an environment variable, when called.
 #
 # Use this function for creating setter for public environment variables that require expensive or
-# time-consuming computaions and may not be needed. When needed, you can call this function to set
+# time-consuming computations and may not be needed. When needed, you can call this function to set
 # the environment variable (which will be available through `$BASH_ENV` from that point onwards).
 #
 # Arguments:

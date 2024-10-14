@@ -25,7 +25,7 @@
  * Ideally, we would run `yarn install` with the `--frozen-lockfile` option to verify that the
  * lockfile is in-sync with `package.json`, but we cannot do that for integration projects, because
  * we want to be able to install the locally built Angular packages). Therefore, we must manually
- * esnure that the integration project lockfiles remain in-sync, which is error-prone.
+ * ensure that the integration project lockfiles remain in-sync, which is error-prone.
  *
  * The checks performed by this script (although not full-proof) provide another line of defense
  * against indeterminism caused by unpinned dependencies.
@@ -43,7 +43,7 @@ const lockfilePath = `${projectDir}/yarn.lock`;
 console.log(`Checking dependencies for '${projectDir}'...`);
 
 // Collect non-local dependencies (in `[name, version]` pairs).
-// (Also ingore `git+https:` dependencies, because checking them is not straight-forward.)
+// (Also ignore `git+https:` dependencies, because checking them is not straight-forward.)
 const pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf8'));
 const deps = [
   ...Object.entries(pkgJson.dependencies || {}),
@@ -55,25 +55,29 @@ const nonExactDeps = deps.filter(([, version]) => !/^\d+\.\d+\.\d+(?:-\w+\.\d+)?
 
 if (nonExactDeps.length) {
   throw new Error(
-      `The following dependencies in '${projectDir}' are not pinned to exact versions (of the ` +
+    `The following dependencies in '${projectDir}' are not pinned to exact versions (of the ` +
       'format X.Y.Z[-<pre-release-identifier>]):' +
-      nonExactDeps.map(([name, version]) => `\n  ${name}: ${version}`));
+      nonExactDeps.map(([name, version]) => `\n  ${name}: ${version}`),
+  );
 }
 
 // Check for dependencies that are not in-sync between `package.json` and the lockfile.
 const {object: parsedLockfile} = parseLockfile(readFileSync(lockfilePath, 'utf8'));
 const outOfSyncDeps = deps
-    .map(([depName, pkgJsonVersion]) => [
-      depName,
-      pkgJsonVersion,
-      (parsedLockfile[`${depName}@${pkgJsonVersion}`] || {}).version,
-    ])
-    .filter(([, pkgJsonVersion, lockfileVersion]) => pkgJsonVersion !== lockfileVersion);
+  .map(([depName, pkgJsonVersion]) => [
+    depName,
+    pkgJsonVersion,
+    (parsedLockfile[`${depName}@${pkgJsonVersion}`] || {}).version,
+  ])
+  .filter(([, pkgJsonVersion, lockfileVersion]) => pkgJsonVersion !== lockfileVersion);
 
 if (outOfSyncDeps.length) {
   throw new Error(
-      `The following dependencies in '${projectDir}' are out-of-sync between 'package.json' and ` +
+    `The following dependencies in '${projectDir}' are out-of-sync between 'package.json' and ` +
       'the lockfile:' +
-      outOfSyncDeps.map(([name, pkgJsonVersion, lockfileVersion]) =>
-        `\n  ${name}: ${pkgJsonVersion} vs ${lockfileVersion}`));
+      outOfSyncDeps.map(
+        ([name, pkgJsonVersion, lockfileVersion]) =>
+          `\n  ${name}: ${pkgJsonVersion} vs ${lockfileVersion}`,
+      ),
+  );
 }

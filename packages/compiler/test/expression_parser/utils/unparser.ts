@@ -3,17 +3,42 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {AST, AstVisitor, ASTWithSource, Binary, BindingPipe, Chain, Conditional, FunctionCall, ImplicitReceiver, Interpolation, KeyedRead, KeyedWrite, LiteralArray, LiteralMap, LiteralPrimitive, MethodCall, NonNullAssert, ParseSpan, PrefixNot, PropertyRead, PropertyWrite, Quote, RecursiveAstVisitor, SafeMethodCall, SafePropertyRead, Unary} from '../../../src/expression_parser/ast';
-import {DEFAULT_INTERPOLATION_CONFIG, InterpolationConfig} from '../../../src/ml_parser/interpolation_config';
+import {
+  AST,
+  AstVisitor,
+  ASTWithSource,
+  Binary,
+  BindingPipe,
+  Call,
+  Chain,
+  Conditional,
+  ImplicitReceiver,
+  Interpolation,
+  KeyedRead,
+  KeyedWrite,
+  LiteralArray,
+  LiteralMap,
+  LiteralPrimitive,
+  NonNullAssert,
+  PrefixNot,
+  PropertyRead,
+  PropertyWrite,
+  RecursiveAstVisitor,
+  SafeCall,
+  SafeKeyedRead,
+  SafePropertyRead,
+  ThisReceiver,
+  Unary,
+} from '../../../src/expression_parser/ast';
+import {DEFAULT_INTERPOLATION_CONFIG, InterpolationConfig} from '../../../src/ml_parser/defaults';
 
 class Unparser implements AstVisitor {
   private static _quoteRegExp = /"/g;
-  // TODO(issue/24571): remove '!'.
+  // using non-null assertion because they're both re(set) by unparse()
   private _expression!: string;
-  // TODO(issue/24571): remove '!'.
   private _interpolationConfig!: InterpolationConfig;
 
   unparse(ast: AST, interpolationConfig: InterpolationConfig) {
@@ -31,7 +56,7 @@ class Unparser implements AstVisitor {
   visitPropertyWrite(ast: PropertyWrite, context: any) {
     this._visit(ast.receiver);
     this._expression +=
-        ast.receiver instanceof ImplicitReceiver ? `${ast.name} = ` : `.${ast.name} = `;
+      ast.receiver instanceof ImplicitReceiver ? `${ast.name} = ` : `.${ast.name} = `;
     this._visit(ast.value);
   }
 
@@ -66,18 +91,30 @@ class Unparser implements AstVisitor {
     this._expression += '(';
     this._visit(ast.exp);
     this._expression += ` | ${ast.name}`;
-    ast.args.forEach(arg => {
+    ast.args.forEach((arg) => {
       this._expression += ':';
       this._visit(arg);
     });
     this._expression += ')';
   }
 
-  visitFunctionCall(ast: FunctionCall, context: any) {
-    this._visit(ast.target!);
+  visitCall(ast: Call, context: any) {
+    this._visit(ast.receiver);
     this._expression += '(';
     let isFirst = true;
-    ast.args.forEach(arg => {
+    ast.args.forEach((arg) => {
+      if (!isFirst) this._expression += ', ';
+      isFirst = false;
+      this._visit(arg);
+    });
+    this._expression += ')';
+  }
+
+  visitSafeCall(ast: SafeCall, context: any) {
+    this._visit(ast.receiver);
+    this._expression += '?.(';
+    let isFirst = true;
+    ast.args.forEach((arg) => {
       if (!isFirst) this._expression += ', ';
       isFirst = false;
       this._visit(arg);
@@ -86,6 +123,8 @@ class Unparser implements AstVisitor {
   }
 
   visitImplicitReceiver(ast: ImplicitReceiver, context: any) {}
+
+  visitThisReceiver(ast: ThisReceiver, context: any) {}
 
   visitInterpolation(ast: Interpolation, context: any) {
     for (let i = 0; i < ast.strings.length; i++) {
@@ -99,14 +138,14 @@ class Unparser implements AstVisitor {
   }
 
   visitKeyedRead(ast: KeyedRead, context: any) {
-    this._visit(ast.obj);
+    this._visit(ast.receiver);
     this._expression += '[';
     this._visit(ast.key);
     this._expression += ']';
   }
 
   visitKeyedWrite(ast: KeyedWrite, context: any) {
-    this._visit(ast.obj);
+    this._visit(ast.receiver);
     this._expression += '[';
     this._visit(ast.key);
     this._expression += '] = ';
@@ -116,7 +155,7 @@ class Unparser implements AstVisitor {
   visitLiteralArray(ast: LiteralArray, context: any) {
     this._expression += '[';
     let isFirst = true;
-    ast.expressions.forEach(expression => {
+    ast.expressions.forEach((expression) => {
       if (!isFirst) this._expression += ', ';
       isFirst = false;
       this._visit(expression);
@@ -142,22 +181,10 @@ class Unparser implements AstVisitor {
 
   visitLiteralPrimitive(ast: LiteralPrimitive, context: any) {
     if (typeof ast.value === 'string') {
-      this._expression += `"${ast.value.replace(Unparser._quoteRegExp, '\"')}"`;
+      this._expression += `"${ast.value.replace(Unparser._quoteRegExp, '"')}"`;
     } else {
       this._expression += `${ast.value}`;
     }
-  }
-
-  visitMethodCall(ast: MethodCall, context: any) {
-    this._visit(ast.receiver);
-    this._expression += ast.receiver instanceof ImplicitReceiver ? `${ast.name}(` : `.${ast.name}(`;
-    let isFirst = true;
-    ast.args.forEach(arg => {
-      if (!isFirst) this._expression += ', ';
-      isFirst = false;
-      this._visit(arg);
-    });
-    this._expression += ')';
   }
 
   visitPrefixNot(ast: PrefixNot, context: any) {
@@ -175,20 +202,11 @@ class Unparser implements AstVisitor {
     this._expression += `?.${ast.name}`;
   }
 
-  visitSafeMethodCall(ast: SafeMethodCall, context: any) {
+  visitSafeKeyedRead(ast: SafeKeyedRead, context: any) {
     this._visit(ast.receiver);
-    this._expression += `?.${ast.name}(`;
-    let isFirst = true;
-    ast.args.forEach(arg => {
-      if (!isFirst) this._expression += ', ';
-      isFirst = false;
-      this._visit(arg);
-    });
-    this._expression += ')';
-  }
-
-  visitQuote(ast: Quote, context: any) {
-    this._expression += `${ast.prefix}:${ast.uninterpretedExpression}`;
+    this._expression += '?.[';
+    this._visit(ast.key);
+    this._expression += ']';
   }
 
   private _visit(ast: AST) {
@@ -199,7 +217,9 @@ class Unparser implements AstVisitor {
 const sharedUnparser = new Unparser();
 
 export function unparse(
-    ast: AST, interpolationConfig: InterpolationConfig = DEFAULT_INTERPOLATION_CONFIG): string {
+  ast: AST,
+  interpolationConfig: InterpolationConfig = DEFAULT_INTERPOLATION_CONFIG,
+): string {
   return sharedUnparser.unparse(ast, interpolationConfig);
 }
 
@@ -207,29 +227,30 @@ export function unparse(
 type UnparsedWithSpan = [string, string];
 
 export function unparseWithSpan(
-    ast: ASTWithSource,
-    interpolationConfig: InterpolationConfig = DEFAULT_INTERPOLATION_CONFIG): UnparsedWithSpan[] {
+  ast: ASTWithSource,
+  interpolationConfig: InterpolationConfig = DEFAULT_INTERPOLATION_CONFIG,
+): UnparsedWithSpan[] {
   const unparsed: UnparsedWithSpan[] = [];
   const source = ast.source!;
-  const recursiveSpanUnparser = new class extends RecursiveAstVisitor {
+  const recursiveSpanUnparser = new (class extends RecursiveAstVisitor {
     private recordUnparsed(ast: any, spanKey: string, unparsedList: UnparsedWithSpan[]) {
       const span = ast[spanKey];
       const prefix = spanKey === 'span' ? '' : `[${spanKey}] `;
       const src = source.substring(span.start, span.end);
-      unparsedList.push([
-        unparse(ast, interpolationConfig),
-        prefix + src,
-      ]);
+      unparsedList.push([unparse(ast, interpolationConfig), prefix + src]);
     }
 
-    visit(ast: AST, unparsedList: UnparsedWithSpan[]) {
+    override visit(ast: AST, unparsedList: UnparsedWithSpan[]) {
       this.recordUnparsed(ast, 'span', unparsedList);
       if (ast.hasOwnProperty('nameSpan')) {
         this.recordUnparsed(ast, 'nameSpan', unparsedList);
       }
+      if (ast.hasOwnProperty('argumentSpan')) {
+        this.recordUnparsed(ast, 'argumentSpan', unparsedList);
+      }
       ast.visit(this, unparsedList);
     }
-  };
+  })();
   recursiveSpanUnparser.visitAll([ast.ast], unparsed);
   return unparsed;
 }

@@ -3,13 +3,13 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {Reference} from '../../imports';
 import {ClassDeclaration} from '../../reflection';
 
-import {DirectiveMeta, MetadataReader} from './api';
+import {DirectiveMeta, HostDirectiveMeta, InputMapping, MetadataReader} from './api';
 import {ClassPropertyMapping, ClassPropertyName} from './property_mapping';
 
 /**
@@ -21,19 +21,26 @@ import {ClassPropertyMapping, ClassPropertyName} from './property_mapping';
  * followed.
  */
 export function flattenInheritedDirectiveMetadata(
-    reader: MetadataReader, dir: Reference<ClassDeclaration>): DirectiveMeta {
+  reader: MetadataReader,
+  dir: Reference<ClassDeclaration>,
+): DirectiveMeta | null {
   const topMeta = reader.getDirectiveMetadata(dir);
   if (topMeta === null) {
-    throw new Error(`Metadata not found for directive: ${dir.debugName}`);
+    return null;
+  }
+  if (topMeta.baseClass === null) {
+    return topMeta;
   }
 
   const coercedInputFields = new Set<ClassPropertyName>();
   const undeclaredInputFields = new Set<ClassPropertyName>();
   const restrictedInputFields = new Set<ClassPropertyName>();
   const stringLiteralInputFields = new Set<ClassPropertyName>();
+  let hostDirectives: HostDirectiveMeta[] | null = null;
   let isDynamic = false;
-  let inputs = ClassPropertyMapping.empty();
+  let inputs = ClassPropertyMapping.empty<InputMapping>();
   let outputs = ClassPropertyMapping.empty();
+  let isStructural: boolean = false;
 
   const addMetadata = (meta: DirectiveMeta): void => {
     if (meta.baseClass === 'dynamic') {
@@ -47,6 +54,8 @@ export function flattenInheritedDirectiveMetadata(
         isDynamic = true;
       }
     }
+
+    isStructural = isStructural || meta.isStructural;
 
     inputs = ClassPropertyMapping.merge(inputs, meta.inputs);
     outputs = ClassPropertyMapping.merge(outputs, meta.outputs);
@@ -63,6 +72,10 @@ export function flattenInheritedDirectiveMetadata(
     for (const field of meta.stringLiteralInputFields) {
       stringLiteralInputFields.add(field);
     }
+    if (meta.hostDirectives !== null && meta.hostDirectives.length > 0) {
+      hostDirectives ??= [];
+      hostDirectives.push(...meta.hostDirectives);
+    }
   };
 
   addMetadata(topMeta);
@@ -76,5 +89,7 @@ export function flattenInheritedDirectiveMetadata(
     restrictedInputFields,
     stringLiteralInputFields,
     baseClass: isDynamic ? 'dynamic' : null,
+    isStructural,
+    hostDirectives,
   };
 }

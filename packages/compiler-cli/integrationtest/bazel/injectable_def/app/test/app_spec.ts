@@ -3,86 +3,86 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {Component, Injectable, INJECTOR, NgModule} from '@angular/core';
 import {TestBed} from '@angular/core/testing';
-import {renderModuleFactory} from '@angular/platform-server';
-import {BasicAppModuleNgFactory} from 'app_built/src/basic.ngfactory';
-import {DepAppModuleNgFactory} from 'app_built/src/dep.ngfactory';
-import {HierarchyAppModuleNgFactory} from 'app_built/src/hierarchy.ngfactory';
-import {RootAppModuleNgFactory} from 'app_built/src/root.ngfactory';
-import {SelfAppModuleNgFactory} from 'app_built/src/self.ngfactory';
-import {StringAppModuleNgFactory} from 'app_built/src/string.ngfactory';
-import {TokenAppModuleNgFactory} from 'app_built/src/token.ngfactory';
+import {renderModule} from '@angular/platform-server';
+import {BasicAppModule} from 'app_built/src/basic';
+import {DepAppModule} from 'app_built/src/dep';
+import {HierarchyAppModule} from 'app_built/src/hierarchy';
+import {RootAppModule} from 'app_built/src/root';
+import {SelfAppModule} from 'app_built/src/self';
+import {StringAppModule} from 'app_built/src/string';
+import {TokenAppModule} from 'app_built/src/token';
 
 describe('ngInjectableDef Bazel Integration', () => {
-  it('works in AOT', done => {
-    renderModuleFactory(BasicAppModuleNgFactory, {
+  it('works in AOT', (done) => {
+    renderModule(BasicAppModule, {
       document: '<id-app></id-app>',
       url: '/',
-    }).then(html => {
+    }).then((html) => {
       expect(html).toMatch(/>0:0<\//);
       done();
     });
   });
 
-  it('@Self() works in component hierarchies', done => {
-    renderModuleFactory(HierarchyAppModuleNgFactory, {
+  it('@Self() works in component hierarchies', (done) => {
+    renderModule(HierarchyAppModule, {
       document: '<hierarchy-app></hierarchy-app>',
       url: '/',
-    }).then(html => {
+    }).then((html) => {
       expect(html).toMatch(/>false<\//);
       done();
     });
   });
 
-  it('@Optional() Self() resolves to @Injectable() scoped service', done => {
-    renderModuleFactory(SelfAppModuleNgFactory, {
+  it('@Optional() Self() resolves to @Injectable() scoped service', (done) => {
+    renderModule(SelfAppModule, {
       document: '<self-app></self-app>',
       url: '/',
-    }).then(html => {
+    }).then((html) => {
       expect(html).toMatch(/>true<\//);
       done();
     });
   });
 
-  it('InjectionToken ngInjectableDef works', done => {
-    renderModuleFactory(TokenAppModuleNgFactory, {
+  it('InjectionToken ngInjectableDef works', (done) => {
+    renderModule(TokenAppModule, {
       document: '<token-app></token-app>',
       url: '/',
-    }).then(html => {
+    }).then((html) => {
       expect(html).toMatch(/>fromToken<\//);
       done();
     });
   });
 
-  it('APP_ROOT_SCOPE works', done => {
-    renderModuleFactory(RootAppModuleNgFactory, {
+  it('APP_ROOT_SCOPE works', (done) => {
+    renderModule(RootAppModule, {
       document: '<root-app></root-app>',
       url: '/',
-    }).then(html => {
+    }).then((html) => {
       expect(html).toMatch(/>true:false<\//);
       done();
     });
   });
 
-  it('can inject dependencies', done => {
-    renderModuleFactory(DepAppModuleNgFactory, {
+  it('can inject dependencies', (done) => {
+    renderModule(DepAppModule, {
       document: '<dep-app></dep-app>',
       url: '/',
-    }).then(html => {
+    }).then((html) => {
       expect(html).toMatch(/>true<\//);
       done();
     });
   });
 
-  it('string tokens work', done => {
-    renderModuleFactory(StringAppModuleNgFactory, {
+  it('string tokens work', (done) => {
+    renderModule(StringAppModule, {
       document: '<string-app></string-app>',
       url: '/',
-    }).then(html => {
+    }).then((html) => {
       expect(html).toMatch(/>works<\//);
       done();
     });
@@ -105,8 +105,7 @@ describe('ngInjectableDef Bazel Integration', () => {
 
   it('allows provider override in JIT for module-scoped @Injectables', () => {
     @NgModule()
-    class Module {
-    }
+    class Module {}
 
     @Injectable({
       providedIn: Module,
@@ -151,7 +150,7 @@ describe('ngInjectableDef Bazel Integration', () => {
       constructor(public value: boolean) {}
     }
 
-    // ChildServices exteds ParentService but does not have @Injectable
+    // ChildServices extends ParentService but does not have @Injectable
     class ChildService extends ParentService {}
 
     TestBed.configureTestingModule({});
@@ -159,33 +158,32 @@ describe('ngInjectableDef Bazel Integration', () => {
     expect(() => TestBed.inject(ChildService).value).toThrowError(/ChildService/);
   });
 
-  it('uses legacy `ngInjectable` property even if it inherits from a class that has `ɵprov` property',
-     () => {
-       @Injectable({
-         providedIn: 'root',
-         useValue: new ParentService('parent'),
-       })
-       class ParentService {
-         constructor(public value: string) {}
-       }
+  it('uses legacy `ngInjectable` property even if it inherits from a class that has `ɵprov` property', () => {
+    @Injectable({
+      providedIn: 'root',
+      useValue: new ParentService('parent'),
+    })
+    class ParentService {
+      constructor(public value: string) {}
+    }
 
-       // ChildServices exteds ParentService but does not have @Injectable
-       class ChildService extends ParentService {
-         constructor(value: string) {
-           super(value);
-         }
-         static ngInjectableDef = {
-           providedIn: 'root',
-           factory: () => new ChildService('child'),
-           token: ChildService,
-         };
-       }
+    // ChildServices extends ParentService but does not have @Injectable
+    class ChildService extends ParentService {
+      constructor(value: string) {
+        super(value);
+      }
+      static ngInjectableDef = {
+        providedIn: 'root',
+        factory: () => new ChildService('child'),
+        token: ChildService,
+      };
+    }
 
-       TestBed.configureTestingModule({});
-       // We are asserting that system throws an error, rather than taking the inherited
-       // annotation.
-       expect(TestBed.inject(ChildService).value).toEqual('child');
-     });
+    TestBed.configureTestingModule({});
+    // We are asserting that system throws an error, rather than taking the inherited
+    // annotation.
+    expect(TestBed.inject(ChildService).value).toEqual('child');
+  });
 
   it('NgModule injector understands requests for INJECTABLE', () => {
     TestBed.configureTestingModule({
@@ -199,9 +197,9 @@ describe('ngInjectableDef Bazel Integration', () => {
       selector: 'test-cmp',
       template: 'test',
       providers: [{provide: 'foo', useValue: 'bar'}],
+      standalone: false,
     })
-    class TestCmp {
-    }
+    class TestCmp {}
 
     TestBed.configureTestingModule({
       declarations: [TestCmp],

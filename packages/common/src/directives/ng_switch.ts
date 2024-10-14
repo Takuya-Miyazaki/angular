@@ -3,16 +3,29 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {Directive, DoCheck, Host, Input, TemplateRef, ViewContainerRef} from '@angular/core';
+import {
+  Directive,
+  DoCheck,
+  Host,
+  Input,
+  Optional,
+  TemplateRef,
+  ViewContainerRef,
+  ɵRuntimeError as RuntimeError,
+} from '@angular/core';
+
+import {RuntimeErrorCode} from '../errors';
 
 export class SwitchView {
   private _created = false;
 
   constructor(
-      private _viewContainerRef: ViewContainerRef, private _templateRef: TemplateRef<Object>) {}
+    private _viewContainerRef: ViewContainerRef,
+    private _templateRef: TemplateRef<Object>,
+  ) {}
 
   create(): void {
     this._created = true;
@@ -94,15 +107,17 @@ export class SwitchView {
  * ```
  *
  * @publicApi
- * @see `NgSwitchCase`
- * @see `NgSwitchDefault`
- * @see [Structural Directives](guide/structural-directives)
+ * @see {@link NgSwitchCase}
+ * @see {@link NgSwitchDefault}
+ * @see [Structural Directives](guide/directives/structural-directives)
  *
  */
-@Directive({selector: '[ngSwitch]'})
+@Directive({
+  selector: '[ngSwitch]',
+  standalone: true,
+})
 export class NgSwitch {
-  // TODO(issue/24571): remove '!'.
-  private _defaultViews!: SwitchView[];
+  private _defaultViews: SwitchView[] = [];
   private _defaultUsed = false;
   private _caseCount = 0;
   private _lastCaseCheckIndex = 0;
@@ -124,16 +139,13 @@ export class NgSwitch {
 
   /** @internal */
   _addDefault(view: SwitchView) {
-    if (!this._defaultViews) {
-      this._defaultViews = [];
-    }
     this._defaultViews.push(view);
   }
 
   /** @internal */
   _matchCase(value: any): boolean {
-    const matched = value == this._ngSwitch;
-    this._lastCasesMatched = this._lastCasesMatched || matched;
+    const matched = value === this._ngSwitch;
+    this._lastCasesMatched ||= matched;
     this._lastCaseCheckIndex++;
     if (this._lastCaseCheckIndex === this._caseCount) {
       this._updateDefaultCases(!this._lastCasesMatched);
@@ -144,10 +156,9 @@ export class NgSwitch {
   }
 
   private _updateDefaultCases(useDefault: boolean) {
-    if (this._defaultViews && useDefault !== this._defaultUsed) {
+    if (this._defaultViews.length > 0 && useDefault !== this._defaultUsed) {
       this._defaultUsed = useDefault;
-      for (let i = 0; i < this._defaultViews.length; i++) {
-        const defaultView = this._defaultViews[i];
+      for (const defaultView of this._defaultViews) {
         defaultView.enforceState(useDefault);
       }
     }
@@ -179,15 +190,18 @@ export class NgSwitch {
  * that defines the subtree to be selected if the value of the match expression
  * matches the value of the switch expression.
  *
- * Unlike JavaScript, which uses strict equality, Angular uses loose equality.
- * This means that the empty string, `""` matches 0.
+ * As of Angular v17 the NgSwitch directive uses strict equality comparison (`===`) instead of
+ * loose equality (`==`) to match different cases.
  *
  * @publicApi
- * @see `NgSwitch`
- * @see `NgSwitchDefault`
+ * @see {@link NgSwitch}
+ * @see {@link NgSwitchDefault}
  *
  */
-@Directive({selector: '[ngSwitchCase]'})
+@Directive({
+  selector: '[ngSwitchCase]',
+  standalone: true,
+})
 export class NgSwitchCase implements DoCheck {
   private _view: SwitchView;
   /**
@@ -196,14 +210,21 @@ export class NgSwitchCase implements DoCheck {
   @Input() ngSwitchCase: any;
 
   constructor(
-      viewContainer: ViewContainerRef, templateRef: TemplateRef<Object>,
-      @Host() private ngSwitch: NgSwitch) {
+    viewContainer: ViewContainerRef,
+    templateRef: TemplateRef<Object>,
+    @Optional() @Host() private ngSwitch: NgSwitch,
+  ) {
+    if ((typeof ngDevMode === 'undefined' || ngDevMode) && !ngSwitch) {
+      throwNgSwitchProviderNotFoundError('ngSwitchCase', 'NgSwitchCase');
+    }
+
     ngSwitch._addCase();
     this._view = new SwitchView(viewContainer, templateRef);
   }
 
   /**
    * Performs case matching. For internal use only.
+   * @nodoc
    */
   ngDoCheck() {
     this._view.enforceState(this.ngSwitch._matchCase(this.ngSwitchCase));
@@ -220,15 +241,37 @@ export class NgSwitchCase implements DoCheck {
  * This statement should be the final case in an `NgSwitch`.
  *
  * @publicApi
- * @see `NgSwitch`
- * @see `NgSwitchCase`
+ * @see {@link NgSwitch}
+ * @see {@link NgSwitchCase}
  *
  */
-@Directive({selector: '[ngSwitchDefault]'})
+@Directive({
+  selector: '[ngSwitchDefault]',
+  standalone: true,
+})
 export class NgSwitchDefault {
   constructor(
-      viewContainer: ViewContainerRef, templateRef: TemplateRef<Object>,
-      @Host() ngSwitch: NgSwitch) {
+    viewContainer: ViewContainerRef,
+    templateRef: TemplateRef<Object>,
+    @Optional() @Host() ngSwitch: NgSwitch,
+  ) {
+    if ((typeof ngDevMode === 'undefined' || ngDevMode) && !ngSwitch) {
+      throwNgSwitchProviderNotFoundError('ngSwitchDefault', 'NgSwitchDefault');
+    }
+
     ngSwitch._addDefault(new SwitchView(viewContainer, templateRef));
   }
+}
+
+function throwNgSwitchProviderNotFoundError(attrName: string, directiveName: string): never {
+  throw new RuntimeError(
+    RuntimeErrorCode.PARENT_NG_SWITCH_NOT_FOUND,
+    `An element with the "${attrName}" attribute ` +
+      `(matching the "${directiveName}" directive) must be located inside an element with the "ngSwitch" attribute ` +
+      `(matching "NgSwitch" directive)`,
+  );
+}
+
+function stringifyValue(value: unknown): string {
+  return typeof value === 'string' ? `'${value}'` : String(value);
 }

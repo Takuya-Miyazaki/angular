@@ -3,21 +3,33 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {Directive, forwardRef, Host, Inject, Input, OnDestroy, OnInit, Optional, Self, SkipSelf} from '@angular/core';
+import {
+  Directive,
+  forwardRef,
+  Host,
+  Inject,
+  Input,
+  OnDestroy,
+  OnInit,
+  Optional,
+  Self,
+  SkipSelf,
+} from '@angular/core';
 
 import {NG_ASYNC_VALIDATORS, NG_VALIDATORS} from '../validators';
 
 import {AbstractFormGroupDirective} from './abstract_form_group_directive';
 import {ControlContainer} from './control_container';
 import {NgForm} from './ng_form';
-import {TemplateDrivenErrors} from './template_driven_errors';
+import {modelGroupParentException} from './template_driven_errors';
+import {AsyncValidator, AsyncValidatorFn, Validator, ValidatorFn} from './validators';
 
 export const modelGroupProvider: any = {
   provide: ControlContainer,
-  useExisting: forwardRef(() => NgModelGroup)
+  useExisting: forwardRef(() => NgModelGroup),
 };
 
 /**
@@ -46,31 +58,42 @@ export const modelGroupProvider: any = {
  * @ngModule FormsModule
  * @publicApi
  */
-@Directive({selector: '[ngModelGroup]', providers: [modelGroupProvider], exportAs: 'ngModelGroup'})
+@Directive({
+  selector: '[ngModelGroup]',
+  providers: [modelGroupProvider],
+  exportAs: 'ngModelGroup',
+  standalone: false,
+})
 export class NgModelGroup extends AbstractFormGroupDirective implements OnInit, OnDestroy {
   /**
    * @description
    * Tracks the name of the `NgModelGroup` bound to the directive. The name corresponds
    * to a key in the parent `NgForm`.
    */
-  // TODO(issue/24571): remove '!'.
-  @Input('ngModelGroup') name!: string;
+  @Input('ngModelGroup') override name: string = '';
 
   constructor(
-      @Host() @SkipSelf() parent: ControlContainer,
-      @Optional() @Self() @Inject(NG_VALIDATORS) validators: any[],
-      @Optional() @Self() @Inject(NG_ASYNC_VALIDATORS) asyncValidators: any[]) {
+    @Host() @SkipSelf() parent: ControlContainer,
+    @Optional() @Self() @Inject(NG_VALIDATORS) validators: (Validator | ValidatorFn)[],
+    @Optional()
+    @Self()
+    @Inject(NG_ASYNC_VALIDATORS)
+    asyncValidators: (AsyncValidator | AsyncValidatorFn)[],
+  ) {
     super();
     this._parent = parent;
-    this._validators = validators;
-    this._asyncValidators = asyncValidators;
+    this._setValidators(validators);
+    this._setAsyncValidators(asyncValidators);
   }
 
   /** @internal */
-  _checkParentType(): void {
-    if (!(this._parent instanceof NgModelGroup) && !(this._parent instanceof NgForm) &&
-        (typeof ngDevMode === 'undefined' || ngDevMode)) {
-      TemplateDrivenErrors.modelGroupParentException();
+  override _checkParentType(): void {
+    if (
+      !(this._parent instanceof NgModelGroup) &&
+      !(this._parent instanceof NgForm) &&
+      (typeof ngDevMode === 'undefined' || ngDevMode)
+    ) {
+      throw modelGroupParentException();
     }
   }
 }

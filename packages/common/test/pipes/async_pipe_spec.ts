@@ -3,226 +3,297 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {AsyncPipe, ɵgetDOM as getDOM} from '@angular/common';
-import {EventEmitter} from '@angular/core';
-import {AsyncTestCompleter, beforeEach, describe, expect, inject, it} from '@angular/core/testing/src/testing_internal';
-import {browserDetection} from '@angular/platform-browser/testing/src/browser_util';
+import {AsyncPipe} from '@angular/common';
+import {ChangeDetectorRef, Component, computed, EventEmitter, signal} from '@angular/core';
+import {TestBed} from '@angular/core/testing';
+import {Observable, of, Subscribable, Unsubscribable} from 'rxjs';
 
-import {SpyChangeDetectorRef} from '../spies';
+describe('AsyncPipe', () => {
+  let pipe: AsyncPipe;
+  let ref: ChangeDetectorRef & jasmine.SpyObj<ChangeDetectorRef>;
 
-{
-  describe('AsyncPipe', () => {
-    describe('Observable', () => {
-      let emitter: EventEmitter<any>;
-      let pipe: AsyncPipe;
-      let ref: any;
-      const message = {};
+  function getChangeDetectorRefSpy() {
+    return jasmine.createSpyObj('ChangeDetectorRef', ['markForCheck', 'detectChanges']);
+  }
 
-      beforeEach(() => {
-        emitter = new EventEmitter();
-        ref = new SpyChangeDetectorRef();
-        pipe = new AsyncPipe(ref);
+  beforeEach(() => {
+    ref = getChangeDetectorRefSpy();
+    pipe = new AsyncPipe(ref);
+  });
+
+  afterEach(() => {
+    pipe.ngOnDestroy(); // Close all subscriptions.
+  });
+
+  describe('Observable', () => {
+    // only expose methods from the Subscribable interface, to ensure that
+    // the implementation does not rely on other methods:
+    const wrapSubscribable = <T>(input: Subscribable<T>): Subscribable<T> => ({
+      subscribe(...args: any): Unsubscribable {
+        const subscription = input.subscribe.apply(input, args);
+        return {
+          unsubscribe() {
+            subscription.unsubscribe();
+          },
+        };
+      },
+    });
+
+    let emitter: EventEmitter<any>;
+    let subscribable: Subscribable<any>;
+    const message = {};
+
+    beforeEach(() => {
+      emitter = new EventEmitter();
+      subscribable = wrapSubscribable(emitter);
+    });
+
+    describe('transform', () => {
+      it('should return null when subscribing to an observable', () => {
+        expect(pipe.transform(subscribable)).toBe(null);
       });
 
-      describe('transform', () => {
-        it('should return null when subscribing to an observable', () => {
-          expect(pipe.transform(emitter)).toBe(null);
-        });
+      it('should return the latest available value', (done) => {
+        pipe.transform(subscribable);
+        emitter.emit(message);
 
-        it('should return the latest available value',
-           inject([AsyncTestCompleter], (async: AsyncTestCompleter) => {
-             pipe.transform(emitter);
-             emitter.emit(message);
-
-             setTimeout(() => {
-               expect(pipe.transform(emitter)).toEqual(message);
-               async.done();
-             }, 0);
-           }));
-
-
-        it('should return same value when nothing has changed since the last call',
-           inject([AsyncTestCompleter], (async: AsyncTestCompleter) => {
-             pipe.transform(emitter);
-             emitter.emit(message);
-
-             setTimeout(() => {
-               pipe.transform(emitter);
-               expect(pipe.transform(emitter)).toBe(message);
-               async.done();
-             }, 0);
-           }));
-
-        it('should dispose of the existing subscription when subscribing to a new observable',
-           inject([AsyncTestCompleter], (async: AsyncTestCompleter) => {
-             pipe.transform(emitter);
-
-             const newEmitter = new EventEmitter();
-             expect(pipe.transform(newEmitter)).toBe(null);
-             emitter.emit(message);
-
-             // this should not affect the pipe
-             setTimeout(() => {
-               expect(pipe.transform(newEmitter)).toBe(null);
-               async.done();
-             }, 0);
-           }));
-
-        it('should request a change detection check upon receiving a new value',
-           inject([AsyncTestCompleter], (async: AsyncTestCompleter) => {
-             pipe.transform(emitter);
-             emitter.emit(message);
-
-             setTimeout(() => {
-               expect(ref.spy('markForCheck')).toHaveBeenCalled();
-               async.done();
-             }, 10);
-           }));
-
-        it('should return value for unchanged NaN', () => {
-          const emitter = new EventEmitter<any>();
-          emitter.emit(null);
-          pipe.transform(emitter);
-          emitter.next(NaN);
-          const firstResult = pipe.transform(emitter);
-          const secondResult = pipe.transform(emitter);
-          expect(firstResult).toBeNaN();
-          expect(secondResult).toBeNaN();
-        });
+        setTimeout(() => {
+          expect(pipe.transform(subscribable)).toEqual(message);
+          done();
+        }, 0);
       });
 
-      describe('ngOnDestroy', () => {
-        it('should do nothing when no subscription', () => {
-          expect(() => pipe.ngOnDestroy()).not.toThrow();
+      it('should return same value when nothing has changed since the last call', (done) => {
+        pipe.transform(subscribable);
+        emitter.emit(message);
+
+        setTimeout(() => {
+          pipe.transform(subscribable);
+          expect(pipe.transform(subscribable)).toBe(message);
+          done();
+        }, 0);
+      });
+
+      it('should dispose of the existing subscription when subscribing to a new observable', (done) => {
+        pipe.transform(subscribable);
+
+        const newEmitter = new EventEmitter();
+        const newSubscribable = wrapSubscribable(newEmitter);
+        expect(pipe.transform(newSubscribable)).toBe(null);
+        emitter.emit(message);
+
+        // this should not affect the pipe
+        setTimeout(() => {
+          expect(pipe.transform(newSubscribable)).toBe(null);
+          done();
+        }, 0);
+      });
+
+      it('should request a change detection check upon receiving a new value', (done) => {
+        pipe.transform(subscribable);
+        emitter.emit(message);
+
+        setTimeout(() => {
+          expect(ref.markForCheck).toHaveBeenCalled();
+          done();
+        }, 10);
+      });
+
+      it('should return value for unchanged NaN', () => {
+        emitter.emit(null);
+        pipe.transform(subscribable);
+        emitter.next(NaN);
+        const firstResult = pipe.transform(subscribable);
+        const secondResult = pipe.transform(subscribable);
+        expect(firstResult).toBeNaN();
+        expect(secondResult).toBeNaN();
+      });
+
+      it('should not track signal reads in subscriptions', () => {
+        const trigger = signal(false);
+
+        const obs = new Observable(() => {
+          // Whenever `obs` is subscribed, synchronously read `trigger`.
+          trigger();
         });
 
-        it('should dispose of the existing subscription',
-           inject([AsyncTestCompleter], (async: AsyncTestCompleter) => {
-             pipe.transform(emitter);
-             pipe.ngOnDestroy();
-             emitter.emit(message);
+        let trackCount = 0;
+        const tracker = computed(() => {
+          // Subscribe to `obs` within this `computed`. If the subscription side effect runs
+          // within the computed, then changes to `trigger` will invalidate this computed.
+          pipe.transform(obs);
 
-             setTimeout(() => {
-               expect(pipe.transform(emitter)).toBe(null);
-               async.done();
-             }, 0);
-           }));
+          // The computed returns how many times it's run.
+          return ++trackCount;
+        });
+
+        expect(tracker()).toBe(1);
+        trigger.set(true);
+        expect(tracker()).toBe(1);
       });
     });
 
-    describe('Promise', () => {
-      const message = {};
-      let pipe: AsyncPipe;
-      let resolve: (result: any) => void;
-      let reject: (error: any) => void;
-      let promise: Promise<any>;
-      let ref: SpyChangeDetectorRef;
-      // adds longer timers for passing tests in IE
-      const timer = (getDOM() && browserDetection.isIE) ? 50 : 10;
-
-      beforeEach(() => {
-        promise = new Promise((res, rej) => {
-          resolve = res;
-          reject = rej;
-        });
-        ref = new SpyChangeDetectorRef();
-        pipe = new AsyncPipe(<any>ref);
+    describe('ngOnDestroy', () => {
+      it('should do nothing when no subscription', () => {
+        expect(() => pipe.ngOnDestroy()).not.toThrow();
       });
 
-      describe('transform', () => {
-        it('should return null when subscribing to a promise', () => {
-          expect(pipe.transform(promise)).toBe(null);
-        });
+      it('should dispose of the existing subscription', (done) => {
+        pipe.transform(subscribable);
+        pipe.ngOnDestroy();
+        emitter.emit(message);
 
-        it('should return the latest available value',
-           inject([AsyncTestCompleter], (async: AsyncTestCompleter) => {
-             pipe.transform(promise);
-
-             resolve(message);
-
-             setTimeout(() => {
-               expect(pipe.transform(promise)).toEqual(message);
-               async.done();
-             }, timer);
-           }));
-
-        it('should return value when nothing has changed since the last call',
-           inject([AsyncTestCompleter], (async: AsyncTestCompleter) => {
-             pipe.transform(promise);
-             resolve(message);
-
-             setTimeout(() => {
-               pipe.transform(promise);
-               expect(pipe.transform(promise)).toBe(message);
-               async.done();
-             }, timer);
-           }));
-
-        it('should dispose of the existing subscription when subscribing to a new promise',
-           inject([AsyncTestCompleter], (async: AsyncTestCompleter) => {
-             pipe.transform(promise);
-
-             promise = new Promise<any>(() => {});
-             expect(pipe.transform(promise)).toBe(null);
-
-             resolve(message);
-
-             setTimeout(() => {
-               expect(pipe.transform(promise)).toBe(null);
-               async.done();
-             }, timer);
-           }));
-
-        it('should request a change detection check upon receiving a new value',
-           inject([AsyncTestCompleter], (async: AsyncTestCompleter) => {
-             const markForCheck = ref.spy('markForCheck');
-             pipe.transform(promise);
-             resolve(message);
-
-             setTimeout(() => {
-               expect(markForCheck).toHaveBeenCalled();
-               async.done();
-             }, timer);
-           }));
-
-        describe('ngOnDestroy', () => {
-          it('should do nothing when no source', () => {
-            expect(() => pipe.ngOnDestroy()).not.toThrow();
-          });
-
-          it('should dispose of the existing source',
-             inject([AsyncTestCompleter], (async: AsyncTestCompleter) => {
-               pipe.transform(promise);
-               expect(pipe.transform(promise)).toBe(null);
-               resolve(message);
-
-
-               setTimeout(() => {
-                 expect(pipe.transform(promise)).toEqual(message);
-                 pipe.ngOnDestroy();
-                 expect(pipe.transform(promise)).toBe(null);
-                 async.done();
-               }, timer);
-             }));
-        });
-      });
-    });
-
-    describe('null', () => {
-      it('should return null when given null', () => {
-        const pipe = new AsyncPipe(null as any);
-        expect(pipe.transform(null)).toEqual(null);
-      });
-    });
-
-    describe('other types', () => {
-      it('should throw when given an invalid object', () => {
-        const pipe = new AsyncPipe(null as any);
-        expect(() => pipe.transform(<any>'some bogus object')).toThrowError();
+        setTimeout(() => {
+          expect(pipe.transform(subscribable)).toBe(null);
+          done();
+        }, 0);
       });
     });
   });
-}
+
+  describe('Subscribable', () => {
+    it('should infer the type from the subscribable', () => {
+      const emitter = new EventEmitter<{name: 'T'}>();
+      // The following line will fail to compile if the type cannot be inferred.
+      const name = pipe.transform(emitter)?.name;
+    });
+  });
+
+  describe('Promise', () => {
+    const message = {};
+    let resolve: (result: any) => void;
+    let reject: (error: any) => void;
+    let promise: Promise<any>;
+    // adds longer timers for passing tests in IE
+    const timer = 10;
+
+    beforeEach(() => {
+      promise = new Promise((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+    });
+
+    describe('transform', () => {
+      it('should return null when subscribing to a promise', () => {
+        expect(pipe.transform(promise)).toBe(null);
+      });
+
+      it('should return the latest available value', (done) => {
+        pipe.transform(promise);
+
+        resolve(message);
+
+        setTimeout(() => {
+          expect(pipe.transform(promise)).toEqual(message);
+          done();
+        }, timer);
+      });
+
+      it('should return value when nothing has changed since the last call', (done) => {
+        pipe.transform(promise);
+        resolve(message);
+
+        setTimeout(() => {
+          pipe.transform(promise);
+          expect(pipe.transform(promise)).toBe(message);
+          done();
+        }, timer);
+      });
+
+      it('should dispose of the existing subscription when subscribing to a new promise', (done) => {
+        pipe.transform(promise);
+
+        promise = new Promise<any>(() => {});
+        expect(pipe.transform(promise)).toBe(null);
+
+        resolve(message);
+
+        setTimeout(() => {
+          expect(pipe.transform(promise)).toBe(null);
+          done();
+        }, timer);
+      });
+
+      it('should request a change detection check upon receiving a new value', (done) => {
+        pipe.transform(promise);
+        resolve(message);
+
+        setTimeout(() => {
+          expect(ref.markForCheck).toHaveBeenCalled();
+          done();
+        }, timer);
+      });
+
+      describe('ngOnDestroy', () => {
+        it('should do nothing when no source', () => {
+          expect(() => pipe.ngOnDestroy()).not.toThrow();
+        });
+
+        it('should dispose of the existing source', (done) => {
+          pipe.transform(promise);
+          expect(pipe.transform(promise)).toBe(null);
+          resolve(message);
+
+          setTimeout(() => {
+            expect(pipe.transform(promise)).toEqual(message);
+            pipe.ngOnDestroy();
+            expect(pipe.transform(promise)).toBe(null);
+            done();
+          }, timer);
+        });
+
+        it('should ignore signals after the pipe has been destroyed', (done) => {
+          pipe.transform(promise);
+          expect(pipe.transform(promise)).toBe(null);
+          pipe.ngOnDestroy();
+          resolve(message);
+
+          setTimeout(() => {
+            expect(pipe.transform(promise)).toBe(null);
+            done();
+          }, timer);
+        });
+      });
+    });
+  });
+
+  describe('null', () => {
+    it('should return null when given null', () => {
+      expect(pipe.transform(null)).toEqual(null);
+    });
+  });
+
+  describe('undefined', () => {
+    it('should return null when given undefined', () => {
+      expect(pipe.transform(undefined)).toEqual(null);
+    });
+  });
+
+  describe('other types', () => {
+    it('should throw when given an invalid object', () => {
+      expect(() => pipe.transform('some bogus object' as any)).toThrowError();
+    });
+  });
+
+  it('should be available as a standalone pipe', () => {
+    @Component({
+      selector: 'test-component',
+      imports: [AsyncPipe],
+      template: '{{ value | async }}',
+      standalone: true,
+    })
+    class TestComponent {
+      value = of('foo');
+    }
+
+    const fixture = TestBed.createComponent(TestComponent);
+    fixture.detectChanges();
+
+    const content = fixture.nativeElement.textContent;
+    expect(content).toBe('foo');
+  });
+});

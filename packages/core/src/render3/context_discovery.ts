@@ -3,20 +3,21 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 import '../util/ng_dev_mode';
 
-import {assertDomNode} from '../util/assert';
+import {assertDefined, assertDomNode} from '../util/assert';
+import {EMPTY_ARRAY} from '../util/empty';
 
-import {EMPTY_ARRAY} from './empty';
-import {LContext, MONKEY_PATCH_KEY_NAME} from './interfaces/context';
-import {TNode, TNodeFlags} from './interfaces/node';
-import {RElement, RNode} from './interfaces/renderer';
-import {CONTEXT, HEADER_OFFSET, HOST, LView, TVIEW} from './interfaces/view';
-import {getComponentLViewByIndex, getNativeByTNodeOrNull, readPatchedData, unwrapRNode} from './util/view_utils';
-
-
+import {assertLView} from './assert';
+import {LContext} from './interfaces/context';
+import {getLViewById, registerLView} from './interfaces/lview_tracking';
+import {TNode} from './interfaces/node';
+import {RElement, RNode} from './interfaces/renderer_dom';
+import {isLView} from './interfaces/type_checks';
+import {CONTEXT, HEADER_OFFSET, HOST, ID, LView, TVIEW} from './interfaces/view';
+import {getComponentLViewByIndex, unwrapRNode} from './util/view_utils';
 
 /**
  * Returns the matching `LContext` data for a given DOM node, directive or component instance.
@@ -38,16 +39,16 @@ import {getComponentLViewByIndex, getNativeByTNodeOrNull, readPatchedData, unwra
  *
  * @param target Component, Directive or DOM Node.
  */
-export function getLContext(target: any): LContext|null {
+export function getLContext(target: any): LContext | null {
   let mpValue = readPatchedData(target);
   if (mpValue) {
     // only when it's an array is it considered an LView instance
     // ... otherwise it's an already constructed LContext instance
-    if (Array.isArray(mpValue)) {
+    if (isLView(mpValue)) {
       const lView: LView = mpValue!;
       let nodeIndex: number;
       let component: any = undefined;
-      let directives: any[]|null|undefined = undefined;
+      let directives: any[] | null | undefined = undefined;
 
       if (isComponentInstance(target)) {
         nodeIndex = findViaComponent(lView, target);
@@ -60,7 +61,7 @@ export function getLContext(target: any): LContext|null {
         if (nodeIndex == -1) {
           throw new Error('The provided directive was not found in the application');
         }
-        directives = getDirectivesAtNodeIndex(nodeIndex, lView, false);
+        directives = getDirectivesAtNodeIndex(nodeIndex, lView);
       } else {
         nodeIndex = findViaNativeElement(lView, target as RElement);
         if (nodeIndex == -1) {
@@ -74,9 +75,10 @@ export function getLContext(target: any): LContext|null {
       // with different target values then the missing target data will be filled in.
       const native = unwrapRNode(lView[nodeIndex]);
       const existingCtx = readPatchedData(native);
-      const context: LContext = (existingCtx && !Array.isArray(existingCtx)) ?
-          existingCtx :
-          createLContext(lView, nodeIndex, native);
+      const context: LContext =
+        existingCtx && !Array.isArray(existingCtx)
+          ? existingCtx
+          : createLContext(lView, nodeIndex, native);
 
       // only when the component has been discovered then update the monkey-patch
       if (component && context.component === undefined) {
@@ -102,15 +104,10 @@ export function getLContext(target: any): LContext|null {
     // if the context is not found then we need to traverse upwards up the DOM
     // to find the nearest element that has already been monkey patched with data
     let parent = rElement as any;
-    while (parent = parent.parentNode) {
+    while ((parent = parent.parentNode)) {
       const parentContext = readPatchedData(parent);
       if (parentContext) {
-        let lView: LView|null;
-        if (Array.isArray(parentContext)) {
-          lView = parentContext as LView;
-        } else {
-          lView = parentContext.lView;
-        }
+        const lView = Array.isArray(parentContext) ? (parentContext as LView) : parentContext.lView;
 
         // the edge of the app was also reached here through another means
         // (maybe because the DOM was changed manually).
@@ -136,14 +133,7 @@ export function getLContext(target: any): LContext|null {
  * Creates an empty instance of a `LContext` context
  */
 function createLContext(lView: LView, nodeIndex: number, native: RNode): LContext {
-  return {
-    lView,
-    nodeIndex,
-    native,
-    component: undefined,
-    directives: undefined,
-    localRefs: undefined,
-  };
+  return new LContext(lView[ID], nodeIndex, native);
 }
 
 /**
@@ -153,29 +143,80 @@ function createLContext(lView: LView, nodeIndex: number, native: RNode): LContex
  * @returns The component's view
  */
 export function getComponentViewByInstance(componentInstance: {}): LView {
-  let lView = readPatchedData(componentInstance);
-  let view: LView;
+  let patchedData = readPatchedData(componentInstance);
+  let lView: LView;
 
-  if (Array.isArray(lView)) {
-    const nodeIndex = findViaComponent(lView, componentInstance);
-    view = getComponentLViewByIndex(nodeIndex, lView);
-    const context = createLContext(lView, nodeIndex, view[HOST] as RElement);
+  if (isLView(patchedData)) {
+    const contextLView: LView = patchedData;
+    const nodeIndex = findViaComponent(contextLView, componentInstance);
+    lView = getComponentLViewByIndex(nodeIndex, contextLView);
+    const context = createLContext(contextLView, nodeIndex, lView[HOST] as RElement);
     context.component = componentInstance;
     attachPatchData(componentInstance, context);
     attachPatchData(context.native, context);
   } else {
-    const context = lView as any as LContext;
-    view = getComponentLViewByIndex(context.nodeIndex, context.lView);
+    const context = patchedData as unknown as LContext;
+    const contextLView = context.lView!;
+    ngDevMode && assertLView(contextLView);
+    lView = getComponentLViewByIndex(context.nodeIndex, contextLView);
   }
-  return view;
+  return lView;
+}
+
+/**
+ * This property will be monkey-patched on elements, components and directives.
+ */
+const MONKEY_PATCH_KEY_NAME = '__ngContext__';
+
+export function attachLViewId(target: any, data: LView) {
+  target[MONKEY_PATCH_KEY_NAME] = data[ID];
+}
+
+/**
+ * Returns the monkey-patch value data present on the target (which could be
+ * a component, directive or a DOM node).
+ */
+export function readLView(target: any): LView | null {
+  const data = readPatchedData(target);
+  if (isLView(data)) {
+    return data;
+  }
+  return data ? data.lView : null;
 }
 
 /**
  * Assigns the given data to the given target (which could be a component,
  * directive or DOM node instance) using monkey-patching.
  */
-export function attachPatchData(target: any, data: LView|LContext) {
-  target[MONKEY_PATCH_KEY_NAME] = data;
+export function attachPatchData(target: any, data: LView | LContext) {
+  ngDevMode && assertDefined(target, 'Target expected');
+  // Only attach the ID of the view in order to avoid memory leaks (see #41047). We only do this
+  // for `LView`, because we have control over when an `LView` is created and destroyed, whereas
+  // we can't know when to remove an `LContext`.
+  if (isLView(data)) {
+    target[MONKEY_PATCH_KEY_NAME] = data[ID];
+    registerLView(data);
+  } else {
+    target[MONKEY_PATCH_KEY_NAME] = data;
+  }
+}
+
+/**
+ * Returns the monkey-patch value data present on the target (which could be
+ * a component, directive or a DOM node).
+ */
+export function readPatchedData(target: any): LView | LContext | null {
+  ngDevMode && assertDefined(target, 'Target expected');
+  const data = target[MONKEY_PATCH_KEY_NAME];
+  return typeof data === 'number' ? getLViewById(data) : data || null;
+}
+
+export function readPatchedLView<T>(target: any): LView<T> | null {
+  const value = readPatchedData(target);
+  if (value) {
+    return (isLView(value) ? value : value.lView) as LView<T>;
+  }
+  return null;
 }
 
 export function isComponentInstance(instance: any): boolean {
@@ -190,13 +231,11 @@ export function isDirectiveInstance(instance: any): boolean {
  * Locates the element within the given LView and returns the matching index
  */
 function findViaNativeElement(lView: LView, target: RElement): number {
-  let tNode = lView[TVIEW].firstChild;
-  while (tNode) {
-    const native = getNativeByTNodeOrNull(tNode, lView)!;
-    if (native === target) {
-      return tNode.index;
+  const tView = lView[TVIEW];
+  for (let i = HEADER_OFFSET; i < tView.bindingStartIndex; i++) {
+    if (unwrapRNode(lView[i]) === target) {
+      return i;
     }
-    tNode = traverseNextElement(tNode);
   }
 
   return -1;
@@ -205,7 +244,7 @@ function findViaNativeElement(lView: LView, target: RElement): number {
 /**
  * Locates the next tNode (child, sibling or parent).
  */
-function traverseNextElement(tNode: TNode): TNode|null {
+function traverseNextElement(tNode: TNode): TNode | null {
   if (tNode.child) {
     return tNode.child;
   } else if (tNode.next) {
@@ -270,34 +309,37 @@ function findViaDirective(lView: LView, directiveInstance: {}): number {
 }
 
 /**
- * Returns a list of directives extracted from the given view based on the
- * provided list of directive index values.
+ * Returns a list of directives applied to a node at a specific index. The list includes
+ * directives matched by selector and any host directives, but it excludes components.
+ * Use `getComponentAtNodeIndex` to find the component applied to a node.
  *
  * @param nodeIndex The node index
  * @param lView The target view data
- * @param includeComponents Whether or not to include components in returned directives
  */
-export function getDirectivesAtNodeIndex(
-    nodeIndex: number, lView: LView, includeComponents: boolean): any[]|null {
+export function getDirectivesAtNodeIndex(nodeIndex: number, lView: LView): any[] | null {
   const tNode = lView[TVIEW].data[nodeIndex] as TNode;
-  let directiveStartIndex = tNode.directiveStart;
-  if (directiveStartIndex == 0) return EMPTY_ARRAY;
-  const directiveEndIndex = tNode.directiveEnd;
-  if (!includeComponents && tNode.flags & TNodeFlags.isComponentHost) directiveStartIndex++;
-  return lView.slice(directiveStartIndex, directiveEndIndex);
+  if (tNode.directiveStart === 0) return EMPTY_ARRAY;
+  const results: any[] = [];
+  for (let i = tNode.directiveStart; i < tNode.directiveEnd; i++) {
+    const directiveInstance = lView[i];
+    if (!isComponentInstance(directiveInstance)) {
+      results.push(directiveInstance);
+    }
+  }
+  return results;
 }
 
-export function getComponentAtNodeIndex(nodeIndex: number, lView: LView): {}|null {
+export function getComponentAtNodeIndex(nodeIndex: number, lView: LView): {} | null {
   const tNode = lView[TVIEW].data[nodeIndex] as TNode;
-  let directiveStartIndex = tNode.directiveStart;
-  return tNode.flags & TNodeFlags.isComponentHost ? lView[directiveStartIndex] : null;
+  const {directiveStart, componentOffset} = tNode;
+  return componentOffset > -1 ? lView[directiveStart + componentOffset] : null;
 }
 
 /**
  * Returns a map of local references (local reference name => element or directive instance) that
  * exist on a given element.
  */
-export function discoverLocalRefs(lView: LView, nodeIndex: number): {[key: string]: any}|null {
+export function discoverLocalRefs(lView: LView, nodeIndex: number): {[key: string]: any} | null {
   const tNode = lView[TVIEW].data[nodeIndex] as TNode;
   if (tNode && tNode.localNames) {
     const result: {[key: string]: any} = {};

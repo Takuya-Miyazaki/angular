@@ -3,13 +3,15 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import * as ts from 'typescript';
+import ts from 'typescript';
 
 import {Reference} from '../../imports';
 import {FunctionDefinition} from '../../reflection';
+
+import {SyntheticValue} from './synthetic';
 
 /**
  * The reason why a value cannot be determined statically.
@@ -62,6 +64,28 @@ export const enum DynamicValueReason {
   COMPLEX_FUNCTION_CALL,
 
   /**
+   * A value that could not be determined because it contains type information that cannot be
+   * statically evaluated. This happens when producing a value from type information, but the value
+   * of the given type cannot be determined statically.
+   *
+   * E.g. evaluating a tuple.
+   *
+   *   `declare const foo: [string];`
+   *
+   *  Evaluating `foo` gives a DynamicValue wrapped in an array with a reason of DYNAMIC_TYPE. This
+   * is because the static evaluator has a `string` type for the first element of this tuple, and
+   * the value of that string cannot be determined statically. The type `string` permits it to be
+   * 'foo', 'bar' or any arbitrary string, so we evaluate it to a DynamicValue.
+   */
+  DYNAMIC_TYPE,
+
+  /**
+   * A value could not be determined because one of the inputs to its evaluation is a synthetically
+   * produced value.
+   */
+  SYNTHETIC_INPUT,
+
+  /**
    * A value could not be determined statically for any reason other the above.
    */
   UNKNOWN,
@@ -72,7 +96,10 @@ export const enum DynamicValueReason {
  */
 export class DynamicValue<R = unknown> {
   private constructor(
-      readonly node: ts.Node, readonly reason: R, private code: DynamicValueReason) {}
+    readonly node: ts.Node,
+    readonly reason: R,
+    private code: DynamicValueReason,
+  ) {}
 
   static fromDynamicInput(node: ts.Node, input: DynamicValue): DynamicValue<DynamicValue> {
     return new DynamicValue(node, input, DynamicValueReason.DYNAMIC_INPUT);
@@ -82,8 +109,10 @@ export class DynamicValue<R = unknown> {
     return new DynamicValue(node, undefined, DynamicValueReason.DYNAMIC_STRING);
   }
 
-  static fromExternalReference(node: ts.Node, ref: Reference<ts.Declaration>):
-      DynamicValue<Reference<ts.Declaration>> {
+  static fromExternalReference(
+    node: ts.Node,
+    ref: Reference<ts.Declaration>,
+  ): DynamicValue<Reference<ts.Declaration>> {
     return new DynamicValue(node, ref, DynamicValueReason.EXTERNAL_REFERENCE);
   }
 
@@ -99,9 +128,22 @@ export class DynamicValue<R = unknown> {
     return new DynamicValue(node, value, DynamicValueReason.INVALID_EXPRESSION_TYPE);
   }
 
-  static fromComplexFunctionCall(node: ts.Node, fn: FunctionDefinition):
-      DynamicValue<FunctionDefinition> {
+  static fromComplexFunctionCall(
+    node: ts.Node,
+    fn: FunctionDefinition,
+  ): DynamicValue<FunctionDefinition> {
     return new DynamicValue(node, fn, DynamicValueReason.COMPLEX_FUNCTION_CALL);
+  }
+
+  static fromDynamicType(node: ts.TypeNode): DynamicValue {
+    return new DynamicValue(node, undefined, DynamicValueReason.DYNAMIC_TYPE);
+  }
+
+  static fromSyntheticInput(
+    node: ts.Node,
+    value: SyntheticValue<unknown>,
+  ): DynamicValue<SyntheticValue<unknown>> {
+    return new DynamicValue(node, value, DynamicValueReason.SYNTHETIC_INPUT);
   }
 
   static fromUnknown(node: ts.Node): DynamicValue {
@@ -136,6 +178,10 @@ export class DynamicValue<R = unknown> {
     return this.code === DynamicValueReason.COMPLEX_FUNCTION_CALL;
   }
 
+  isFromDynamicType(this: DynamicValue<R>): this is DynamicValue {
+    return this.code === DynamicValueReason.DYNAMIC_TYPE;
+  }
+
   isFromUnknown(this: DynamicValue<R>): this is DynamicValue {
     return this.code === DynamicValueReason.UNKNOWN;
   }
@@ -148,7 +194,8 @@ export class DynamicValue<R = unknown> {
         return visitor.visitDynamicString(this);
       case DynamicValueReason.EXTERNAL_REFERENCE:
         return visitor.visitExternalReference(
-            this as unknown as DynamicValue<Reference<ts.Declaration>>);
+          this as unknown as DynamicValue<Reference<ts.Declaration>>,
+        );
       case DynamicValueReason.UNSUPPORTED_SYNTAX:
         return visitor.visitUnsupportedSyntax(this);
       case DynamicValueReason.UNKNOWN_IDENTIFIER:
@@ -157,7 +204,14 @@ export class DynamicValue<R = unknown> {
         return visitor.visitInvalidExpressionType(this);
       case DynamicValueReason.COMPLEX_FUNCTION_CALL:
         return visitor.visitComplexFunctionCall(
-            this as unknown as DynamicValue<FunctionDefinition>);
+          this as unknown as DynamicValue<FunctionDefinition>,
+        );
+      case DynamicValueReason.DYNAMIC_TYPE:
+        return visitor.visitDynamicType(this);
+      case DynamicValueReason.SYNTHETIC_INPUT:
+        return visitor.visitSyntheticInput(
+          this as unknown as DynamicValue<SyntheticValue<unknown>>,
+        );
       case DynamicValueReason.UNKNOWN:
         return visitor.visitUnknown(this);
     }
@@ -172,5 +226,7 @@ export interface DynamicValueVisitor<R> {
   visitUnknownIdentifier(value: DynamicValue): R;
   visitInvalidExpressionType(value: DynamicValue): R;
   visitComplexFunctionCall(value: DynamicValue<FunctionDefinition>): R;
+  visitDynamicType(value: DynamicValue): R;
+  visitSyntheticInput(value: DynamicValue<SyntheticValue<unknown>>): R;
   visitUnknown(value: DynamicValue): R;
 }

@@ -3,10 +3,56 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
-import {AST, ASTWithSource, BoundTarget, ImplicitReceiver, MethodCall, ParseSourceSpan, PropertyRead, PropertyWrite, RecursiveAstVisitor, TmplAstBoundAttribute, TmplAstBoundEvent, TmplAstBoundText, TmplAstElement, TmplAstNode, TmplAstRecursiveVisitor, TmplAstReference, TmplAstTemplate, TmplAstVariable} from '@angular/compiler';
-import {AbsoluteSourceSpan, AttributeIdentifier, ElementIdentifier, IdentifierKind, MethodIdentifier, PropertyIdentifier, ReferenceIdentifier, TemplateNodeIdentifier, TopLevelIdentifier, VariableIdentifier} from './api';
+import {
+  AST,
+  ASTWithSource,
+  BoundTarget,
+  ImplicitReceiver,
+  ParseSourceSpan,
+  PropertyRead,
+  PropertyWrite,
+  RecursiveAstVisitor,
+  TmplAstBoundAttribute,
+  TmplAstBoundDeferredTrigger,
+  TmplAstBoundEvent,
+  TmplAstBoundText,
+  TmplAstDeferredBlock,
+  TmplAstDeferredBlockError,
+  TmplAstDeferredBlockLoading,
+  TmplAstDeferredBlockPlaceholder,
+  TmplAstDeferredTrigger,
+  TmplAstElement,
+  TmplAstForLoopBlock,
+  TmplAstForLoopBlockEmpty,
+  TmplAstIfBlock,
+  TmplAstIfBlockBranch,
+  TmplAstLetDeclaration,
+  TmplAstNode,
+  TmplAstRecursiveVisitor,
+  TmplAstReference,
+  TmplAstSwitchBlock,
+  TmplAstSwitchBlockCase,
+  TmplAstTemplate,
+  TmplAstVariable,
+} from '@angular/compiler';
+
+import {ClassDeclaration, DeclarationNode} from '../../reflection';
+
+import {
+  AbsoluteSourceSpan,
+  AttributeIdentifier,
+  ElementIdentifier,
+  IdentifierKind,
+  LetDeclarationIdentifier,
+  MethodIdentifier,
+  PropertyIdentifier,
+  ReferenceIdentifier,
+  TemplateNodeIdentifier,
+  TopLevelIdentifier,
+  VariableIdentifier,
+} from './api';
 import {ComponentMeta} from './context';
 
 /**
@@ -18,9 +64,9 @@ interface HTMLNode extends TmplAstNode {
   name?: string;
 }
 
-type ExpressionIdentifier = PropertyIdentifier|MethodIdentifier;
-type TmplTarget = TmplAstReference|TmplAstVariable;
-type TargetIdentifier = ReferenceIdentifier|VariableIdentifier;
+type ExpressionIdentifier = PropertyIdentifier | MethodIdentifier;
+type TmplTarget = TmplAstReference | TmplAstVariable | TmplAstLetDeclaration;
+type TargetIdentifier = ReferenceIdentifier | VariableIdentifier | LetDeclarationIdentifier;
 type TargetIdentifierMap = Map<TmplTarget, TargetIdentifier>;
 
 /**
@@ -34,11 +80,14 @@ type TargetIdentifierMap = Map<TmplTarget, TargetIdentifier>;
  */
 class ExpressionVisitor extends RecursiveAstVisitor {
   readonly identifiers: ExpressionIdentifier[] = [];
+  readonly errors: Error[] = [];
 
   private constructor(
-      private readonly expressionStr: string, private readonly absoluteOffset: number,
-      private readonly boundTemplate: BoundTarget<ComponentMeta>,
-      private readonly targetToIdentifier: (target: TmplTarget) => TargetIdentifier) {
+    private readonly expressionStr: string,
+    private readonly absoluteOffset: number,
+    private readonly boundTemplate: BoundTarget<ComponentMeta>,
+    private readonly targetToIdentifier: (target: TmplTarget) => TargetIdentifier | null,
+  ) {
     super();
   }
 
@@ -54,29 +103,32 @@ class ExpressionVisitor extends RecursiveAstVisitor {
    * @param targetToIdentifier closure converting a template target node to its identifier.
    */
   static getIdentifiers(
-      ast: AST, source: string, absoluteOffset: number, boundTemplate: BoundTarget<ComponentMeta>,
-      targetToIdentifier: (target: TmplTarget) => TargetIdentifier): TopLevelIdentifier[] {
-    const visitor =
-        new ExpressionVisitor(source, absoluteOffset, boundTemplate, targetToIdentifier);
+    ast: AST,
+    source: string,
+    absoluteOffset: number,
+    boundTemplate: BoundTarget<ComponentMeta>,
+    targetToIdentifier: (target: TmplTarget) => TargetIdentifier | null,
+  ): {identifiers: TopLevelIdentifier[]; errors: Error[]} {
+    const visitor = new ExpressionVisitor(
+      source,
+      absoluteOffset,
+      boundTemplate,
+      targetToIdentifier,
+    );
     visitor.visit(ast);
-    return visitor.identifiers;
+    return {identifiers: visitor.identifiers, errors: visitor.errors};
   }
 
-  visit(ast: AST) {
+  override visit(ast: AST) {
     ast.visit(this);
   }
 
-  visitMethodCall(ast: MethodCall, context: {}) {
-    this.visitIdentifier(ast, IdentifierKind.Method);
-    super.visitMethodCall(ast, context);
-  }
-
-  visitPropertyRead(ast: PropertyRead, context: {}) {
+  override visitPropertyRead(ast: PropertyRead, context: {}) {
     this.visitIdentifier(ast, IdentifierKind.Property);
     super.visitPropertyRead(ast, context);
   }
 
-  visitPropertyWrite(ast: PropertyWrite, context: {}) {
+  override visitPropertyWrite(ast: PropertyWrite, context: {}) {
     this.visitIdentifier(ast, IdentifierKind.Property);
     super.visitPropertyWrite(ast, context);
   }
@@ -88,7 +140,9 @@ class ExpressionVisitor extends RecursiveAstVisitor {
    * @param kind identifier kind
    */
   private visitIdentifier(
-      ast: AST&{name: string, receiver: AST}, kind: ExpressionIdentifier['kind']) {
+    ast: AST & {name: string; receiver: AST},
+    kind: ExpressionIdentifier['kind'],
+  ) {
     // The definition of a non-top-level property such as `bar` in `{{foo.bar}}` is currently
     // impossible to determine by an indexer and unsupported by the indexing module.
     // The indexing module also does not currently support references to identifiers declared in the
@@ -97,15 +151,23 @@ class ExpressionVisitor extends RecursiveAstVisitor {
       return;
     }
 
-    // Get the location of the identifier of real interest.
-    // The compiler's expression parser records the location of some expressions in a manner not
-    // useful to the indexer. For example, a `MethodCall` `foo(a, b)` will record the span of the
-    // entire method call, but the indexer is interested only in the method identifier.
-    const localExpression = this.expressionStr.substr(ast.span.start);
-    if (!localExpression.includes(ast.name)) {
-      throw new Error(`Impossible state: "${ast.name}" not found in "${localExpression}"`);
+    // The source span of the requested AST starts at a location that is offset from the expression.
+    let identifierStart = ast.sourceSpan.start - this.absoluteOffset;
+
+    if (ast instanceof PropertyRead || ast instanceof PropertyWrite) {
+      // For `PropertyRead` and `PropertyWrite`, the identifier starts at the `nameSpan`, not
+      // necessarily the `sourceSpan`.
+      identifierStart = ast.nameSpan.start - this.absoluteOffset;
     }
-    const identifierStart = ast.span.start + localExpression.indexOf(ast.name);
+
+    if (!this.expressionStr.substring(identifierStart).startsWith(ast.name)) {
+      this.errors.push(
+        new Error(
+          `Impossible state: "${ast.name}" not found in "${this.expressionStr}" at location ${identifierStart}`,
+        ),
+      );
+      return;
+    }
 
     // Join the relative position of the expression within a node with the absolute position
     // of the node to get the absolute position of the expression in the source code.
@@ -132,13 +194,16 @@ class ExpressionVisitor extends RecursiveAstVisitor {
 class TemplateVisitor extends TmplAstRecursiveVisitor {
   // Identifiers of interest found in the template.
   readonly identifiers = new Set<TopLevelIdentifier>();
+  readonly errors: Error[] = [];
 
   // Map of targets in a template to their identifiers.
   private readonly targetIdentifierCache: TargetIdentifierMap = new Map();
 
   // Map of elements and templates to their identifiers.
-  private readonly elementAndTemplateIdentifierCache =
-      new Map<TmplAstElement|TmplAstTemplate, ElementIdentifier|TemplateNodeIdentifier>();
+  private readonly elementAndTemplateIdentifierCache = new Map<
+    TmplAstElement | TmplAstTemplate,
+    ElementIdentifier | TemplateNodeIdentifier
+  >();
 
   /**
    * Creates a template visitor for a bound template target. The bound target can be used when
@@ -160,7 +225,7 @@ class TemplateVisitor extends TmplAstRecursiveVisitor {
   }
 
   visitAll(nodes: TmplAstNode[]) {
-    nodes.forEach(node => this.visit(node));
+    nodes.forEach((node) => this.visit(node));
   }
 
   /**
@@ -168,10 +233,11 @@ class TemplateVisitor extends TmplAstRecursiveVisitor {
    *
    * @param element
    */
-  visitElement(element: TmplAstElement) {
+  override visitElement(element: TmplAstElement) {
     const elementIdentifier = this.elementOrTemplateToIdentifier(element);
-
-    this.identifiers.add(elementIdentifier);
+    if (elementIdentifier !== null) {
+      this.identifiers.add(elementIdentifier);
+    }
 
     this.visitAll(element.references);
     this.visitAll(element.inputs);
@@ -179,10 +245,13 @@ class TemplateVisitor extends TmplAstRecursiveVisitor {
     this.visitAll(element.children);
     this.visitAll(element.outputs);
   }
-  visitTemplate(template: TmplAstTemplate) {
+
+  override visitTemplate(template: TmplAstTemplate) {
     const templateIdentifier = this.elementOrTemplateToIdentifier(template);
 
-    this.identifiers.add(templateIdentifier);
+    if (templateIdentifier !== null) {
+      this.identifiers.add(templateIdentifier);
+    }
 
     this.visitAll(template.variables);
     this.visitAll(template.attributes);
@@ -190,67 +259,143 @@ class TemplateVisitor extends TmplAstRecursiveVisitor {
     this.visitAll(template.children);
     this.visitAll(template.references);
   }
-  visitBoundAttribute(attribute: TmplAstBoundAttribute) {
-    // A BoundAttribute's value (the parent AST) may have subexpressions (children ASTs) that have
-    // recorded spans extending past the recorded span of the parent. The most common example of
-    // this is with `*ngFor`.
-    // To resolve this, use the information on the BoundAttribute Template AST, which is always
-    // correct, to determine locations of identifiers in the expression.
-    //
-    // TODO(ayazhafiz): Remove this when https://github.com/angular/angular/pull/31813 lands.
-    const attributeSrc = attribute.sourceSpan.toString();
-    const attributeAbsolutePosition = attribute.sourceSpan.start.offset;
 
-    // Skip the bytes of the attribute name so that there are no collisions between the attribute
-    // name and expression identifier names later.
-    const nameSkipOffet = attributeSrc.indexOf(attribute.name) + attribute.name.length;
-    const expressionSrc = attributeSrc.substring(nameSkipOffet);
-    const expressionAbsolutePosition = attributeAbsolutePosition + nameSkipOffet;
+  override visitBoundAttribute(attribute: TmplAstBoundAttribute) {
+    // If the bound attribute has no value, it cannot have any identifiers in the value expression.
+    if (attribute.valueSpan === undefined) {
+      return;
+    }
 
-    const identifiers = ExpressionVisitor.getIdentifiers(
-        attribute.value, expressionSrc, expressionAbsolutePosition, this.boundTemplate,
-        this.targetToIdentifier.bind(this));
-    identifiers.forEach(id => this.identifiers.add(id));
+    const {identifiers, errors} = ExpressionVisitor.getIdentifiers(
+      attribute.value,
+      attribute.valueSpan.toString(),
+      attribute.valueSpan.start.offset,
+      this.boundTemplate,
+      this.targetToIdentifier.bind(this),
+    );
+    identifiers.forEach((id) => this.identifiers.add(id));
+    this.errors.push(...errors);
   }
-  visitBoundEvent(attribute: TmplAstBoundEvent) {
+  override visitBoundEvent(attribute: TmplAstBoundEvent) {
     this.visitExpression(attribute.handler);
   }
-  visitBoundText(text: TmplAstBoundText) {
+  override visitBoundText(text: TmplAstBoundText) {
     this.visitExpression(text.value);
   }
-  visitReference(reference: TmplAstReference) {
-    const referenceIdentifer = this.targetToIdentifier(reference);
+  override visitReference(reference: TmplAstReference) {
+    const referenceIdentifier = this.targetToIdentifier(reference);
+    if (referenceIdentifier === null) {
+      return;
+    }
 
-    this.identifiers.add(referenceIdentifer);
+    this.identifiers.add(referenceIdentifier);
   }
-  visitVariable(variable: TmplAstVariable) {
+  override visitVariable(variable: TmplAstVariable) {
     const variableIdentifier = this.targetToIdentifier(variable);
+    if (variableIdentifier === null) {
+      return;
+    }
 
     this.identifiers.add(variableIdentifier);
   }
 
+  override visitDeferredBlock(deferred: TmplAstDeferredBlock) {
+    deferred.visitAll(this);
+  }
+
+  override visitDeferredBlockPlaceholder(block: TmplAstDeferredBlockPlaceholder) {
+    this.visitAll(block.children);
+  }
+
+  override visitDeferredBlockError(block: TmplAstDeferredBlockError) {
+    this.visitAll(block.children);
+  }
+
+  override visitDeferredBlockLoading(block: TmplAstDeferredBlockLoading) {
+    this.visitAll(block.children);
+  }
+
+  override visitDeferredTrigger(trigger: TmplAstDeferredTrigger) {
+    if (trigger instanceof TmplAstBoundDeferredTrigger) {
+      this.visitExpression(trigger.value);
+    }
+  }
+
+  override visitSwitchBlock(block: TmplAstSwitchBlock) {
+    this.visitExpression(block.expression);
+    this.visitAll(block.cases);
+  }
+
+  override visitSwitchBlockCase(block: TmplAstSwitchBlockCase) {
+    block.expression && this.visitExpression(block.expression);
+    this.visitAll(block.children);
+  }
+
+  override visitForLoopBlock(block: TmplAstForLoopBlock): void {
+    block.item.visit(this);
+    this.visitAll(block.contextVariables);
+    this.visitExpression(block.expression);
+    this.visitAll(block.children);
+    block.empty?.visit(this);
+  }
+
+  override visitForLoopBlockEmpty(block: TmplAstForLoopBlockEmpty): void {
+    this.visitAll(block.children);
+  }
+
+  override visitIfBlock(block: TmplAstIfBlock): void {
+    this.visitAll(block.branches);
+  }
+
+  override visitIfBlockBranch(block: TmplAstIfBlockBranch): void {
+    block.expression && this.visitExpression(block.expression);
+    block.expressionAlias?.visit(this);
+    this.visitAll(block.children);
+  }
+
+  override visitLetDeclaration(decl: TmplAstLetDeclaration): void {
+    const identifier = this.targetToIdentifier(decl);
+
+    if (identifier !== null) {
+      this.identifiers.add(identifier);
+    }
+
+    this.visitExpression(decl.value);
+  }
+
   /** Creates an identifier for a template element or template node. */
-  private elementOrTemplateToIdentifier(node: TmplAstElement|TmplAstTemplate): ElementIdentifier
-      |TemplateNodeIdentifier {
+  private elementOrTemplateToIdentifier(
+    node: TmplAstElement | TmplAstTemplate,
+  ): ElementIdentifier | TemplateNodeIdentifier | null {
     // If this node has already been seen, return the cached result.
     if (this.elementAndTemplateIdentifierCache.has(node)) {
       return this.elementAndTemplateIdentifierCache.get(node)!;
     }
 
     let name: string;
-    let kind: IdentifierKind.Element|IdentifierKind.Template;
+    let kind: IdentifierKind.Element | IdentifierKind.Template;
     if (node instanceof TmplAstTemplate) {
-      name = node.tagName;
+      name = node.tagName ?? 'ng-template';
       kind = IdentifierKind.Template;
     } else {
       name = node.name;
       kind = IdentifierKind.Element;
     }
+    // Namespaced elements have a particular format for `node.name` that needs to be handled.
+    // For example, an `<svg>` element has a `node.name` of `':svg:svg'`.
+    // TODO(alxhub): properly handle namespaced elements
+    if (name.startsWith(':')) {
+      name = name.split(':').pop()!;
+    }
+
     const sourceSpan = node.startSourceSpan;
     // An element's or template's source span can be of the form `<element>`, `<element />`, or
     // `<element></element>`. Only the selector is interesting to the indexer, so the source is
     // searched for the first occurrence of the element (selector) name.
     const start = this.getStartLocation(name, sourceSpan);
+    if (start === null) {
+      return null;
+    }
     const absoluteSpan = new AbsoluteSourceSpan(start, start + name.length);
 
     // Record the nodes's attributes, which an indexer can later traverse to see if any of them
@@ -269,22 +414,23 @@ class TemplateVisitor extends TmplAstRecursiveVisitor {
       span: absoluteSpan,
       kind,
       attributes: new Set(attributes),
-      usedDirectives: new Set(usedDirectives.map(dir => {
-        return {
-          node: dir.ref.node,
-          selector: dir.selector,
-        };
-      })),
+      usedDirectives: new Set(
+        usedDirectives.map((dir) => {
+          return {
+            node: dir.ref.node,
+            selector: dir.selector,
+          };
+        }),
+      ),
       // cast b/c pre-TypeScript 3.5 unions aren't well discriminated
-    } as ElementIdentifier |
-        TemplateNodeIdentifier;
+    } as ElementIdentifier | TemplateNodeIdentifier;
 
     this.elementAndTemplateIdentifierCache.set(node, identifier);
     return identifier;
   }
 
   /** Creates an identifier for a template reference or template variable target. */
-  private targetToIdentifier(node: TmplAstReference|TmplAstVariable): TargetIdentifier {
+  private targetToIdentifier(node: TmplTarget): TargetIdentifier | null {
     // If this node has already been seen, return the cached result.
     if (this.targetIdentifierCache.has(node)) {
       return this.targetIdentifierCache.get(node)!;
@@ -292,8 +438,12 @@ class TemplateVisitor extends TmplAstRecursiveVisitor {
 
     const {name, sourceSpan} = node;
     const start = this.getStartLocation(name, sourceSpan);
+    if (start === null) {
+      return null;
+    }
+
     const span = new AbsoluteSourceSpan(start, start + name.length);
-    let identifier: ReferenceIdentifier|VariableIdentifier;
+    let identifier: ReferenceIdentifier | VariableIdentifier | LetDeclarationIdentifier;
     if (node instanceof TmplAstReference) {
       // If the node is a reference, we care about its target. The target can be an element, a
       // template, a directive applied on a template or element (in which case the directive field
@@ -301,17 +451,22 @@ class TemplateVisitor extends TmplAstRecursiveVisitor {
       const refTarget = this.boundTemplate.getReferenceTarget(node);
       let target = null;
       if (refTarget) {
+        let node: ElementIdentifier | TemplateNodeIdentifier | null = null;
+        let directive: ClassDeclaration<DeclarationNode> | null = null;
         if (refTarget instanceof TmplAstElement || refTarget instanceof TmplAstTemplate) {
-          target = {
-            node: this.elementOrTemplateToIdentifier(refTarget),
-            directive: null,
-          };
+          node = this.elementOrTemplateToIdentifier(refTarget);
         } else {
-          target = {
-            node: this.elementOrTemplateToIdentifier(refTarget.node),
-            directive: refTarget.directive.ref.node,
-          };
+          node = this.elementOrTemplateToIdentifier(refTarget.node);
+          directive = refTarget.directive.ref.node;
         }
+
+        if (node === null) {
+          return null;
+        }
+        target = {
+          node,
+          directive,
+        };
       }
 
       identifier = {
@@ -320,11 +475,17 @@ class TemplateVisitor extends TmplAstRecursiveVisitor {
         kind: IdentifierKind.Reference,
         target,
       };
-    } else {
+    } else if (node instanceof TmplAstVariable) {
       identifier = {
         name,
         span,
         kind: IdentifierKind.Variable,
+      };
+    } else {
+      identifier = {
+        name,
+        span,
+        kind: IdentifierKind.LetDeclaration,
       };
     }
 
@@ -333,10 +494,11 @@ class TemplateVisitor extends TmplAstRecursiveVisitor {
   }
 
   /** Gets the start location of a string in a SourceSpan */
-  private getStartLocation(name: string, context: ParseSourceSpan): number {
+  private getStartLocation(name: string, context: ParseSourceSpan): number | null {
     const localStr = context.toString();
     if (!localStr.includes(name)) {
-      throw new Error(`Impossible state: "${name}" not found in "${localStr}"`);
+      this.errors.push(new Error(`Impossible state: "${name}" not found in "${localStr}"`));
+      return null;
     }
     return context.start.offset + localStr.indexOf(name);
   }
@@ -353,9 +515,15 @@ class TemplateVisitor extends TmplAstRecursiveVisitor {
       // Make target to identifier mapping closure stateful to this visitor instance.
       const targetToIdentifier = this.targetToIdentifier.bind(this);
       const absoluteOffset = ast.sourceSpan.start;
-      const identifiers = ExpressionVisitor.getIdentifiers(
-          ast, ast.source, absoluteOffset, this.boundTemplate, targetToIdentifier);
-      identifiers.forEach(id => this.identifiers.add(id));
+      const {identifiers, errors} = ExpressionVisitor.getIdentifiers(
+        ast,
+        ast.source,
+        absoluteOffset,
+        this.boundTemplate,
+        targetToIdentifier,
+      );
+      identifiers.forEach((id) => this.identifiers.add(id));
+      this.errors.push(...errors);
     }
   }
 }
@@ -366,11 +534,13 @@ class TemplateVisitor extends TmplAstRecursiveVisitor {
  * @param boundTemplate bound template target, which can be used for querying expression targets.
  * @return identifiers in template
  */
-export function getTemplateIdentifiers(boundTemplate: BoundTarget<ComponentMeta>):
-    Set<TopLevelIdentifier> {
+export function getTemplateIdentifiers(boundTemplate: BoundTarget<ComponentMeta>): {
+  identifiers: Set<TopLevelIdentifier>;
+  errors: Error[];
+} {
   const visitor = new TemplateVisitor(boundTemplate);
   if (boundTemplate.target.template !== undefined) {
     visitor.visitAll(boundTemplate.target.template);
   }
-  return visitor.identifiers;
+  return {identifiers: visitor.identifiers, errors: visitor.errors};
 }

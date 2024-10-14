@@ -3,7 +3,7 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {InjectionToken} from '@angular/core';
@@ -20,19 +20,12 @@ export interface PlatformConfig {
    */
   document?: string;
   /**
-   * The URL for the current application state. This is
-   * used for initializing the platform's location and
-   * for setting absolute URL resolution for HTTP requests.
+   * The URL for the current application state. This is used for initializing
+   * the platform's location. `protocol`, `hostname`, and `port` will be
+   * overridden if `baseUrl` is set.
    * @default none
    */
   url?: string;
-  /**
-   * Whether to append the absolute URL to any relative HTTP
-   * requests. If set to true, this logic executes prior to
-   * any HTTP interceptors that may run later on in the request.
-   * @default false
-   */
-  useAbsoluteUrl?: boolean;
 }
 
 /**
@@ -43,10 +36,13 @@ export interface PlatformConfig {
 export const INITIAL_CONFIG = new InjectionToken<PlatformConfig>('Server.INITIAL_CONFIG');
 
 /**
- * A function that will be executed when calling `renderModuleFactory` or `renderModule` just
- * before current platform state is rendered to string.
+ * A function that will be executed when calling `renderApplication` or
+ * `renderModule` just before current platform state is rendered to string.
  *
  * @publicApi
  */
-export const BEFORE_APP_SERIALIZED =
-    new InjectionToken<Array<() => void | Promise<void>>>('Server.RENDER_MODULE_HOOK');
+export const BEFORE_APP_SERIALIZED = new InjectionToken<ReadonlyArray<() => void | Promise<void>>>(
+  'Server.RENDER_MODULE_HOOK',
+);
+
+export const ENABLE_DOM_EMULATION = new InjectionToken<boolean>('ENABLE_DOM_EMULATION');

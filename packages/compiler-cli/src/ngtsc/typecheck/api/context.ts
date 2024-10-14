@@ -3,13 +3,20 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {ParseSourceFile, R3TargetBinder, SchemaMetadata, TmplAstNode} from '@angular/compiler';
-import * as ts from 'typescript';
+import {
+  ParseError,
+  ParseSourceFile,
+  R3TargetBinder,
+  SchemaMetadata,
+  TmplAstNode,
+} from '@angular/compiler';
+import ts from 'typescript';
 
 import {Reference} from '../../imports';
+import {PipeMeta} from '../../metadata';
 import {ClassDeclaration} from '../../reflection';
 
 import {TemplateSourceMapping, TypeCheckableDirectiveMeta} from './api';
@@ -35,12 +42,23 @@ export interface TypeCheckContext {
    * @param sourceMapping a `TemplateSourceMapping` instance which describes the origin of the
    * template text described by the AST.
    * @param file the `ParseSourceFile` associated with the template.
+   * @param parseErrors the `ParseError`'s associated with the template.
+   * @param isStandalone a boolean indicating whether the component is standalone.
+   * @param preserveWhitespaces a boolean indicating whether the component's template preserves
+   * whitespaces.
    */
   addTemplate(
-      ref: Reference<ClassDeclaration<ts.ClassDeclaration>>,
-      binder: R3TargetBinder<TypeCheckableDirectiveMeta>, template: TmplAstNode[],
-      pipes: Map<string, Reference<ClassDeclaration<ts.ClassDeclaration>>>,
-      schemas: SchemaMetadata[], sourceMapping: TemplateSourceMapping, file: ParseSourceFile): void;
+    ref: Reference<ClassDeclaration<ts.ClassDeclaration>>,
+    binder: R3TargetBinder<TypeCheckableDirectiveMeta>,
+    template: TmplAstNode[],
+    pipes: Map<string, PipeMeta>,
+    schemas: SchemaMetadata[],
+    sourceMapping: TemplateSourceMapping,
+    file: ParseSourceFile,
+    parseErrors: ParseError[] | null,
+    isStandalone: boolean,
+    preserveWhitespaces: boolean,
+  ): void;
 }
 
 /**

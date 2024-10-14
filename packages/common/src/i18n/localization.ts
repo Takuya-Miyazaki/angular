@@ -3,21 +3,24 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {Inject, Injectable, LOCALE_ID} from '@angular/core';
 
 import {getLocalePluralCase, Plural} from './locale_data_api';
 
-
 /**
  * @publicApi
  */
+@Injectable({
+  providedIn: 'root',
+  useFactory: (locale: string) => new NgLocaleLocalization(locale),
+  deps: [LOCALE_ID],
+})
 export abstract class NgLocalization {
   abstract getPluralCategory(value: any, locale?: string): string;
 }
-
 
 /**
  * Returns the plural category for a given value.
@@ -25,7 +28,11 @@ export abstract class NgLocalization {
  * - the plural category otherwise
  */
 export function getPluralCategory(
-    value: number, cases: string[], ngLocalization: NgLocalization, locale?: string): string {
+  value: number,
+  cases: string[],
+  ngLocalization: NgLocalization,
+  locale?: string,
+): string {
   let key = `=${value}`;
 
   if (cases.indexOf(key) > -1) {
@@ -56,7 +63,7 @@ export class NgLocaleLocalization extends NgLocalization {
     super();
   }
 
-  getPluralCategory(value: any, locale?: string): string {
+  override getPluralCategory(value: any, locale?: string): string {
     const plural = getLocalePluralCase(locale || this.locale)(value);
 
     switch (plural) {

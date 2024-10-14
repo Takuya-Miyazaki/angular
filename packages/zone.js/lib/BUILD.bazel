@@ -1,4 +1,4 @@
-load("@npm_bazel_typescript//:index.bzl", "ts_library")
+load("//tools:defaults.bzl", "ts_library")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -8,7 +8,12 @@ exports_files(glob([
 
 ts_library(
     name = "zone_d_ts",
-    srcs = [":zone.ts"],
+    srcs = [
+        ":zone.api.extensions.ts",
+        ":zone.configurations.api.ts",
+        ":zone.ts",
+        ":zone-impl.ts",
+    ],
     deps = [
         "@npm//@types/node",
     ],
@@ -16,9 +21,15 @@ ts_library(
 
 ts_library(
     name = "lib",
+    package_name = "zone.js/lib",
     srcs = glob(
         ["**/*.ts"],
-        exclude = ["zone.ts"],
+        exclude = [
+            "zone.ts",
+            "zone-impl.ts",
+            "zone.api.extensions.ts",
+            "zone.configurations.api.ts",
+        ],
     ),
     module_name = "zone.js/lib",
     deps = [
@@ -26,6 +37,5 @@ ts_library(
         "@npm//@types/jasmine",
         "@npm//@types/node",
         "@npm//rxjs",
-        "@npm//tslib",
     ],
 )

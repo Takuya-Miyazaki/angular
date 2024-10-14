@@ -3,16 +3,31 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {ElementRef, Injector, SimpleChanges} from '@angular/core';
 
-import {DirectiveRequireProperty, element as angularElement, IAugmentedJQuery, ICloneAttachFunction, ICompileService, IController, IControllerService, IDirective, IHttpBackendService, IInjectorService, ILinkFn, IScope, ITemplateCacheService, SingleOrListOrMap} from './angular1';
+import {
+  DirectiveRequireProperty,
+  element as angularElement,
+  IAugmentedJQuery,
+  ICloneAttachFunction,
+  ICompileService,
+  IController,
+  IControllerService,
+  IDirective,
+  IHttpBackendService,
+  IInjectorService,
+  ILinkFn,
+  IScope,
+  ITemplateCacheService,
+  SingleOrListOrMap,
+} from './angular1';
 import {$COMPILE, $CONTROLLER, $HTTP_BACKEND, $INJECTOR, $TEMPLATE_CACHE} from './constants';
-import {controllerKey, directiveNormalize, isFunction} from './util';
-
-
+import {cleanData, controllerKey, directiveNormalize, isFunction} from './util';
+import {TrustedHTML} from './security/trusted_types_defs';
+import {trustedHTMLFromLegacyTemplate} from './security/trusted_types';
 
 // Constants
 const REQUIRE_PREFIX_RE = /^(\^\^?)?(\?)?(\^\^?)?/;
@@ -41,8 +56,11 @@ export class UpgradeHelper {
   private readonly $controller: IControllerService;
 
   constructor(
-      private injector: Injector, private name: string, elementRef: ElementRef,
-      directive?: IDirective) {
+    injector: Injector,
+    private name: string,
+    elementRef: ElementRef,
+    directive?: IDirective,
+  ) {
     this.$injector = injector.get($INJECTOR);
     this.$compile = this.$injector.get($COMPILE);
     this.$controller = this.$injector.get($CONTROLLER);
@@ -50,7 +68,7 @@ export class UpgradeHelper {
     this.element = elementRef.nativeElement;
     this.$element = angularElement(this.element);
 
-    this.directive = directive || UpgradeHelper.getDirective(this.$injector, name);
+    this.directive = directive ?? UpgradeHelper.getDirective(this.$injector, name);
   }
 
   static getDirective($injector: IInjectorService, name: string): IDirective {
@@ -71,17 +89,20 @@ export class UpgradeHelper {
   }
 
   static getTemplate(
-      $injector: IInjectorService, directive: IDirective, fetchRemoteTemplate = false,
-      $element?: IAugmentedJQuery): string|Promise<string> {
+    $injector: IInjectorService,
+    directive: IDirective,
+    fetchRemoteTemplate = false,
+    $element?: IAugmentedJQuery,
+  ): string | TrustedHTML | Promise<string | TrustedHTML> {
     if (directive.template !== undefined) {
-      return getOrCall<string>(directive.template, $element);
+      return trustedHTMLFromLegacyTemplate(getOrCall<string>(directive.template, $element));
     } else if (directive.templateUrl) {
       const $templateCache = $injector.get($TEMPLATE_CACHE) as ITemplateCacheService;
       const url = getOrCall<string>(directive.templateUrl, $element);
       const template = $templateCache.get(url);
 
       if (template !== undefined) {
-        return template;
+        return trustedHTMLFromLegacyTemplate(template);
       } else if (!fetchRemoteTemplate) {
         throw new Error('loading directive templates asynchronously is not supported');
       }
@@ -90,7 +111,7 @@ export class UpgradeHelper {
         const $httpBackend = $injector.get($HTTP_BACKEND) as IHttpBackendService;
         $httpBackend('GET', url, null, (status: number, response: string) => {
           if (status === 200) {
-            resolve($templateCache.put(url, response));
+            resolve(trustedHTMLFromLegacyTemplate($templateCache.put(url, response)));
           } else {
             reject(`GET component template from '${url}' returned '${status}: ${response}'`);
           }
@@ -107,15 +128,16 @@ export class UpgradeHelper {
     const locals = {'$scope': $scope, '$element': this.$element};
     const controller = this.$controller(controllerType, locals, null, this.directive.controllerAs);
 
-    this.$element.data!(controllerKey(this.directive.name!), controller);
+    this.$element.data?.(controllerKey(this.directive.name!), controller);
 
     return controller;
   }
 
-  compileTemplate(template?: string): ILinkFn {
+  compileTemplate(template?: string | TrustedHTML): ILinkFn {
     if (template === undefined) {
-      template =
-          UpgradeHelper.getTemplate(this.$injector, this.directive, false, this.$element) as string;
+      template = UpgradeHelper.getTemplate(this.$injector, this.directive, false, this.$element) as
+        | string
+        | TrustedHTML;
     }
 
     return this.compileHtml(template);
@@ -126,18 +148,10 @@ export class UpgradeHelper {
       controllerInstance.$onDestroy();
     }
     $scope.$destroy();
-
-    // Clean the jQuery/jqLite data on the component+child elements.
-    // Equivelent to how jQuery/jqLite invoke `cleanData` on an Element (this.element)
-    //  https://github.com/jquery/jquery/blob/e743cbd28553267f955f71ea7248377915613fd9/src/manipulation.js#L223
-    //  https://github.com/angular/angular.js/blob/26ddc5f830f902a3d22f4b2aab70d86d4d688c82/src/jqLite.js#L306-L312
-    // `cleanData` will invoke the AngularJS `$destroy` DOM event
-    //  https://github.com/angular/angular.js/blob/26ddc5f830f902a3d22f4b2aab70d86d4d688c82/src/Angular.js#L1911-L1924
-    angularElement.cleanData([this.element]);
-    angularElement.cleanData(this.element.querySelectorAll('*'));
+    cleanData(this.element);
   }
 
-  prepareTransclusion(): ILinkFn|undefined {
+  prepareTransclusion(): ILinkFn | undefined {
     const transclude = this.directive.transclude;
     const contentChildNodes = this.extractChildNodes();
     const attachChildrenFn: ILinkFn = (scope, cloneAttachFn) => {
@@ -160,18 +174,18 @@ export class UpgradeHelper {
         const filledSlots = Object.create(null);
 
         // Parse the element selectors.
-        Object.keys(transclude).forEach(slotName => {
+        Object.keys(transclude).forEach((slotName) => {
           let selector = transclude[slotName];
           const optional = selector.charAt(0) === '?';
           selector = optional ? selector.substring(1) : selector;
 
           slotMap[selector] = slotName;
-          slots[slotName] = null;            // `null`: Defined but not yet filled.
-          filledSlots[slotName] = optional;  // Consider optional slots as filled.
+          slots[slotName] = null; // `null`: Defined but not yet filled.
+          filledSlots[slotName] = optional; // Consider optional slots as filled.
         });
 
         // Add the matching elements into their slot.
-        contentChildNodes.forEach(node => {
+        contentChildNodes.forEach((node) => {
           const slotName = slotMap[directiveNormalize(node.nodeName.toLowerCase())];
           if (slotName) {
             filledSlots[slotName] = true;
@@ -183,18 +197,20 @@ export class UpgradeHelper {
         });
 
         // Check for required slots that were not filled.
-        Object.keys(filledSlots).forEach(slotName => {
+        Object.keys(filledSlots).forEach((slotName) => {
           if (!filledSlots[slotName]) {
             throw new Error(`Required transclusion slot '${slotName}' on directive: ${this.name}`);
           }
         });
 
-        Object.keys(slots).filter(slotName => slots[slotName]).forEach(slotName => {
-          const nodes = slots[slotName];
-          slots[slotName] = (scope: IScope, cloneAttach: ICloneAttachFunction) => {
-            return cloneAttach!(nodes, scope);
-          };
-        });
+        Object.keys(slots)
+          .filter((slotName) => slots[slotName])
+          .forEach((slotName) => {
+            const nodes = slots[slotName];
+            slots[slotName] = (scope: IScope, cloneAttach: ICloneAttachFunction) => {
+              return cloneAttach!(nodes, scope);
+            };
+          });
       }
 
       // Attach `$$slots` to default slot transclude fn.
@@ -210,7 +226,7 @@ export class UpgradeHelper {
       // to empty text nodes (which can only be a result of Angular removing their initial content).
       // NOTE: Transcluded text content that starts with whitespace followed by an interpolation
       //       will still fail to be detected by AngularJS v1.6+
-      $template.forEach(node => {
+      $template.forEach((node) => {
         if (node.nodeType === Node.TEXT_NODE && !node.nodeValue) {
           node.nodeValue = '\u200C';
         }
@@ -220,13 +236,13 @@ export class UpgradeHelper {
     return attachChildrenFn;
   }
 
-  resolveAndBindRequiredControllers(controllerInstance: IControllerInstance|null) {
+  resolveAndBindRequiredControllers(controllerInstance: IControllerInstance | null) {
     const directiveRequire = this.getDirectiveRequire();
     const requiredControllers = this.resolveRequire(directiveRequire);
 
     if (controllerInstance && this.directive.bindToController && isMap(directiveRequire)) {
       const requiredControllersMap = requiredControllers as {[key: string]: IControllerInstance};
-      Object.keys(requiredControllersMap).forEach(key => {
+      Object.keys(requiredControllersMap).forEach((key) => {
         controllerInstance[key] = requiredControllersMap[key];
       });
     }
@@ -234,17 +250,17 @@ export class UpgradeHelper {
     return requiredControllers;
   }
 
-  private compileHtml(html: string): ILinkFn {
+  private compileHtml(html: string | TrustedHTML): ILinkFn {
     this.element.innerHTML = html;
     return this.$compile(this.element.childNodes);
   }
 
   private extractChildNodes(): Node[] {
     const childNodes: Node[] = [];
-    let childNode: Node|null;
+    let childNode: Node | null;
 
-    while (childNode = this.element.firstChild) {
-      this.element.removeChild(childNode);
+    while ((childNode = this.element.firstChild)) {
+      (childNode as Element | Comment | Text).remove();
       childNodes.push(childNode);
     }
 
@@ -255,8 +271,7 @@ export class UpgradeHelper {
     const require = this.directive.require || (this.directive.controller && this.directive.name)!;
 
     if (isMap(require)) {
-      Object.keys(require).forEach(key => {
-        const value = require[key];
+      Object.entries(require).forEach(([key, value]) => {
         const match = value.match(REQUIRE_PREFIX_RE)!;
         const name = value.substring(match[0].length);
 
@@ -269,15 +284,16 @@ export class UpgradeHelper {
     return require;
   }
 
-  private resolveRequire(require: DirectiveRequireProperty, controllerInstance?: any):
-      SingleOrListOrMap<IControllerInstance>|null {
+  private resolveRequire(
+    require: DirectiveRequireProperty,
+  ): SingleOrListOrMap<IControllerInstance> | null {
     if (!require) {
       return null;
     } else if (Array.isArray(require)) {
-      return require.map(req => this.resolveRequire(req));
+      return require.map((req) => this.resolveRequire(req));
     } else if (typeof require === 'object') {
       const value: {[key: string]: IControllerInstance} = {};
-      Object.keys(require).forEach(key => value[key] = this.resolveRequire(require[key])!);
+      Object.keys(require).forEach((key) => (value[key] = this.resolveRequire(require[key])!));
       return value;
     } else if (typeof require === 'string') {
       const match = require.match(REQUIRE_PREFIX_RE)!;
@@ -294,18 +310,20 @@ export class UpgradeHelper {
 
       if (!value && !isOptional) {
         throw new Error(
-            `Unable to find required '${require}' in upgraded directive '${this.name}'.`);
+          `Unable to find required '${require}' in upgraded directive '${this.name}'.`,
+        );
       }
 
       return value;
     } else {
       throw new Error(
-          `Unrecognized 'require' syntax on upgraded directive '${this.name}': ${require}`);
+        `Unrecognized 'require' syntax on upgraded directive '${this.name}': ${require}`,
+      );
     }
   }
 }
 
-function getOrCall<T>(property: T|Function, ...args: any[]): T {
+function getOrCall<T>(property: T | Function, ...args: any[]): T {
   return isFunction(property) ? property(...args) : property;
 }
 

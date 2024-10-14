@@ -3,10 +3,11 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
-import * as path from 'path';
-import * as shx from 'shelljs';
+import {runfiles} from '@bazel/runfiles';
+import path from 'path';
+import shx from 'shelljs';
 
 function checkInSubFolder(subFolder: string, testFn: Function) {
   shx.cd(subFolder);
@@ -15,9 +16,9 @@ function checkInSubFolder(subFolder: string, testFn: Function) {
 }
 
 describe('Zone.js npm_package', () => {
-  beforeEach(
-      () => {shx.cd(
-          path.dirname(require.resolve('angular/packages/zone.js/npm_package/package.json')))});
+  beforeEach(() => {
+    shx.cd(path.dirname(runfiles.resolve('angular/packages/zone.js/npm_package/package.json')));
+  });
   describe('misc root files', () => {
     describe('README.md', () => {
       it('should have a README.md file with basic info', () => {
@@ -40,38 +41,41 @@ describe('Zone.js npm_package', () => {
     it('should contain module resolution mappings', () => {
       expect(shx.grep('"main":', packageJson)).toContain(`zone.umd.js`);
     });
+
+    it('should contain typings', () => {
+      expect(shx.grep('"typings":', packageJson)).toContain(`./zone.d.ts`);
+    });
   });
 
   describe('check npm_package root folder', () => {
     describe('typescript support', () => {
-      it('should have an zone.js.d.ts file', () => {
-        expect(shx.cat('zone.js.d.ts')).toContain('declare const');
-      });
+      it('should include types', () => {
+        // Root `zone.d.ts` file imports globals and extensions.
+        expect(shx.cat('zone.d.ts')).toContain('lib/zone');
+        expect(shx.cat('zone.d.ts')).toContain('lib/zone.api.extensions');
+        expect(shx.cat('zone.d.ts')).toContain('lib/zone.configurations.api');
 
-      it('should have an zone.api.extensions.ts file', () => {
-        expect(shx.cat('zone.api.extensions.ts')).toContain('EventTarget');
-      });
+        // Defines globals.
+        expect(shx.cat('lib/zone.d.ts')).toContain('declare global {');
+        expect(shx.cat('lib/zone.d.ts')).toContain('const Zone');
 
-      it('should have an zone.configurations.api.ts file', () => {
-        expect(shx.cat('zone.configurations.api.ts')).toContain('ZoneGlobalConfigurations');
-      });
-    });
-
-    describe('closure', () => {
-      it('should contain externs', () => {
-        expect(shx.cat('zone_externs.js')).toContain('Externs for zone.js');
+        // Defines extensions.
+        expect(shx.cat('lib/zone.api.extensions.d.ts')).toContain('interface EventTarget');
+        expect(shx.cat('lib/zone.configurations.api.d.ts')).toContain('ZoneGlobalConfigurations');
       });
     });
 
     describe('rxjs patch', () => {
       it('should not contain rxjs source', () => {
         checkInSubFolder('./bundles', () => {
-          expect(shx.cat('zone-patch-rxjs.umd.js'))
-              .not.toContain('_enable_super_gross_mode_that_will_cause_bad_things');
+          expect(shx.cat('zone-patch-rxjs.umd.js')).not.toContain(
+            '_enable_super_gross_mode_that_will_cause_bad_things',
+          );
         });
         checkInSubFolder('./fesm2015', () => {
-          expect(shx.cat('zone-patch-rxjs.js'))
-              .not.toContain('_enable_super_gross_mode_that_will_cause_bad_things');
+          expect(shx.cat('zone-patch-rxjs.js')).not.toContain(
+            '_enable_super_gross_mode_that_will_cause_bad_things',
+          );
         });
       });
     });
@@ -88,6 +92,12 @@ describe('Zone.js npm_package', () => {
           expect(shx.cat('zone.umd.js')).not.toContain('sourceMappingURL');
         });
       });
+
+      it('zone.js(es5) should contain use strict', () => {
+        checkInSubFolder('./bundles', () => {
+          expect(shx.cat('zone.umd.js')).toMatch(/^\s*'use strict';/);
+        });
+      });
     });
 
     describe('es2015', () => {
@@ -101,90 +111,21 @@ describe('Zone.js npm_package', () => {
           expect(shx.cat('zone.js')).not.toContain('sourceMappingURL');
         });
       });
-    });
+      it('zone.js(es2015) should contain use strict', () => {
+        checkInSubFolder('./fesm2015', () => {
+          expect(shx.cat('zone.js')).toMatch(/^\s*'use strict';/);
+        });
+      });
 
-
-    describe('plugins folder check', () => {
-      it('should contain all plugin folders in ./plugins', () => {
-        const expected = [
-          'async-test',
-          'async-test.min',
-          'fake-async-test',
-          'fake-async-test.min',
-          'jasmine-patch',
-          'jasmine-patch.min',
-          'long-stack-trace-zone',
-          'long-stack-trace-zone.min',
-          'mocha-patch',
-          'mocha-patch.min',
-          'proxy',
-          'proxy.min',
-          'sync-test',
-          'sync-test.min',
-          'task-tracking',
-          'task-tracking.min',
-          'webapis-media-query',
-          'webapis-media-query.min',
-          'webapis-notification',
-          'webapis-notification.min',
-          'webapis-rtc-peer-connection',
-          'webapis-rtc-peer-connection.min',
-          'webapis-shadydom',
-          'webapis-shadydom.min',
-          'wtf',
-          'wtf.min',
-          'zone-bluebird',
-          'zone-bluebird.min',
-          'zone-error',
-          'zone-error.min',
-          'zone-legacy',
-          'zone-legacy.min',
-          'zone-patch-canvas',
-          'zone-patch-canvas.min',
-          'zone-patch-cordova',
-          'zone-patch-cordova.min',
-          'zone-patch-electron',
-          'zone-patch-electron.min',
-          'zone-patch-fetch',
-          'zone-patch-fetch.min',
-          'zone-patch-jsonp',
-          'zone-patch-jsonp.min',
-          'zone-patch-message-port',
-          'zone-patch-message-port.min',
-          'zone-patch-promise-test',
-          'zone-patch-promise-test.min',
-          'zone-patch-resize-observer',
-          'zone-patch-resize-observer.min',
-          'zone-patch-rxjs-fake-async',
-          'zone-patch-rxjs-fake-async.min',
-          'zone-patch-rxjs',
-          'zone-patch-rxjs.min',
-          'zone-patch-socket-io',
-          'zone-patch-socket-io.min',
-          'zone-patch-user-media',
-          'zone-patch-user-media.min',
-        ].sort();
-
-        checkInSubFolder('./plugins', () => {
-          const list = shx.ls('./').stdout.split('\n').sort().slice(1);
-          expect(list.length).toBe(expected.length);
-          for (let i = 0; i < list.length; i++) {
-            expect(list[i]).toEqual(expected[i]);
-            const packageJson = shx.cat(`${list[i]}/package.json`);
-            const umdMinName = list[i].indexOf('.min') === -1 ?
-                `${list[i]}.umd` :
-                `${list[i].substring(0, list[i].indexOf('.min'))}.umd.min`;
-            expect(packageJson).toContain(`"name": "zone.js/${list[i]}"`);
-            expect(packageJson).toContain(`"main": "../../bundles/${umdMinName}.js"`);
-            expect(packageJson).toContain(`"fesm2015": "../../fesm2015/${list[i]}.js"`);
-            expect(packageJson).toContain(`"es2015": "../../fesm2015/${list[i]}.js"`);
-            expect(packageJson).toContain(`"module": "../../fesm2015/${list[i]}.js"`);
-          }
+      it('zone-patch-rxjs.js should have rxjs external', () => {
+        checkInSubFolder('./fesm2015', () => {
+          expect(shx.cat('zone-patch-rxjs.js')).toContain(` from 'rxjs'`);
+          expect(shx.cat('zone-patch-rxjs.js')).toContain(`Zone.__load_patch('rxjs',`);
         });
       });
     });
 
-    describe('dist file list', () => {
+    describe('bundles file list', () => {
       it('should contain all files', () => {
         const expected = [
           'async-test.js',
@@ -247,10 +188,6 @@ describe('Zone.js npm_package', () => {
           'zone-patch-socket-io.min.js',
           'zone-patch-user-media.js',
           'zone-patch-user-media.min.js',
-          'zone-testing-bundle.js',
-          'zone-testing-bundle.min.js',
-          'zone-testing-node-bundle.js',
-          'zone-testing-node-bundle.min.js',
           'zone-testing.js',
           'zone-testing.min.js',
           'zone.js',
@@ -272,119 +209,6 @@ describe('Zone.js npm_package', () => {
           expect(list.length).toBe(expected.length);
           for (let i = 0; i < list.length; i++) {
             expect(list[i]).toEqual(expected[i]);
-          }
-        });
-      });
-    });
-
-    describe('backward compatible check', () => {
-      it('should contain all original folders in /dist', () => {
-        const expected = [
-          'async-test',
-          'async-test.min',
-          'fake-async-test',
-          'fake-async-test.min',
-          'jasmine-patch',
-          'jasmine-patch.min',
-          'long-stack-trace-zone',
-          'long-stack-trace-zone.min',
-          'mocha-patch',
-          'mocha-patch.min',
-          'proxy',
-          'proxy.min',
-          'sync-test',
-          'sync-test.min',
-          'task-tracking',
-          'task-tracking.min',
-          'webapis-media-query',
-          'webapis-media-query.min',
-          'webapis-notification',
-          'webapis-notification.min',
-          'webapis-rtc-peer-connection',
-          'webapis-rtc-peer-connection.min',
-          'webapis-shadydom',
-          'webapis-shadydom.min',
-          'wtf',
-          'wtf.min',
-          'zone-bluebird',
-          'zone-bluebird.min',
-          'zone-error',
-          'zone-error.min',
-          'zone-legacy',
-          'zone-legacy.min',
-          'zone-mix',
-          'zone-mix.min',
-          'zone-node',
-          'zone-node.min',
-          'zone-patch-canvas',
-          'zone-patch-canvas.min',
-          'zone-patch-cordova',
-          'zone-patch-cordova.min',
-          'zone-patch-electron',
-          'zone-patch-electron.min',
-          'zone-patch-fetch',
-          'zone-patch-fetch.min',
-          'zone-patch-jsonp',
-          'zone-patch-jsonp.min',
-          'zone-patch-message-port',
-          'zone-patch-message-port.min',
-          'zone-patch-promise-test',
-          'zone-patch-promise-test.min',
-          'zone-patch-resize-observer',
-          'zone-patch-resize-observer.min',
-          'zone-patch-rxjs-fake-async',
-          'zone-patch-rxjs-fake-async.min',
-          'zone-patch-rxjs',
-          'zone-patch-rxjs.min',
-          'zone-patch-socket-io',
-          'zone-patch-socket-io.min',
-          'zone-patch-user-media',
-          'zone-patch-user-media.min',
-          'zone-testing-bundle',
-          'zone-testing-bundle.min',
-          'zone-testing-node-bundle',
-          'zone-testing-node-bundle.min',
-          'zone-testing',
-          'zone-testing.min',
-          'zone',
-          'zone.min',
-          'zone_externs',
-          'zone-evergreen',
-          'zone-evergreen.min',
-          'zone-evergreen-testing-bundle',
-          'zone-evergreen-testing-bundle.min',
-        ].sort();
-        checkInSubFolder('./dist', () => {
-          const list = shx.ls('./').stdout.split('\n').sort().slice(1);
-          expect(list.length).toBe(expected.length);
-          for (let i = 0; i < list.length; i++) {
-            expect(list[i]).toEqual(expected[i]);
-            const packageJson = shx.cat(`${list[i]}/package.json`);
-            if (list[i].indexOf('_externs') !== -1) {
-              expect(packageJson).toContain(`"name": "zone.js/${list[i]}"`);
-              expect(packageJson).toContain(`"main": "../../${list[i]}.js"`);
-              expect(packageJson).toContain(`"fesm2015": "../../${list[i]}.js"`);
-              expect(packageJson).toContain(`"es2015": "../../${list[i]}.js"`);
-              expect(packageJson).toContain(`"module": "../../${list[i]}.js"`);
-              continue;
-            }
-            if (list[i].indexOf('evergreen') === -1) {
-              const umdMinName = list[i].indexOf('.min') === -1 ?
-                  `${list[i]}.umd` :
-                  `${list[i].substring(0, list[i].indexOf('.min'))}.umd.min`;
-              expect(packageJson).toContain(`"name": "zone.js/${list[i]}"`);
-              expect(packageJson).toContain(`"main": "../../bundles/${umdMinName}.js"`);
-              expect(packageJson).toContain(`"fesm2015": "../../fesm2015/${list[i]}.js"`);
-              expect(packageJson).toContain(`"es2015": "../../fesm2015/${list[i]}.js"`);
-              expect(packageJson).toContain(`"module": "../../fesm2015/${list[i]}.js"`);
-            } else {
-              const removeEvergreen = list[i].replace('-evergreen', '');
-              expect(packageJson).toContain(`"name": "zone.js/${list[i]}"`);
-              expect(packageJson).toContain(`"main": "../../fesm2015/${removeEvergreen}.js"`);
-              expect(packageJson).toContain(`"fesm2015": "../../fesm2015/${removeEvergreen}.js"`);
-              expect(packageJson).toContain(`"es2015": "../../fesm2015/${removeEvergreen}.js"`);
-              expect(packageJson).toContain(`"module": "../../fesm2015/${removeEvergreen}.js"`);
-            }
           }
         });
       });

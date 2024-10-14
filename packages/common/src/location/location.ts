@@ -3,13 +3,13 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {EventEmitter, Injectable, ɵɵinject} from '@angular/core';
-import {SubscriptionLike} from 'rxjs';
+import {Injectable, OnDestroy, ɵɵinject} from '@angular/core';
+import {Subject, SubscriptionLike} from 'rxjs';
+
 import {LocationStrategy} from './location_strategy';
-import {PlatformLocation} from './platform_location';
 import {joinWithSlash, normalizeQueryParams, stripTrailingSlash} from './util';
 
 /** @publicApi */
@@ -30,7 +30,7 @@ export interface PopStateEvent {
  *
  * @usageNotes
  *
- * It's better to use the `Router#navigate` service to trigger route changes. Use
+ * It's better to use the `Router.navigate()` service to trigger route changes. Use
  * `Location` only if you need to interact with or create normalized URLs outside of
  * routing.
  *
@@ -53,33 +53,42 @@ export interface PopStateEvent {
   // See #23917
   useFactory: createLocation,
 })
-export class Location {
+export class Location implements OnDestroy {
   /** @internal */
-  _subject: EventEmitter<any> = new EventEmitter();
+  _subject = new Subject<PopStateEvent>();
   /** @internal */
-  _baseHref: string;
+  _basePath: string;
   /** @internal */
-  _platformStrategy: LocationStrategy;
-  /** @internal */
-  _platformLocation: PlatformLocation;
+  _locationStrategy: LocationStrategy;
   /** @internal */
   _urlChangeListeners: ((url: string, state: unknown) => void)[] = [];
   /** @internal */
-  _urlChangeSubscription?: SubscriptionLike;
+  _urlChangeSubscription: SubscriptionLike | null = null;
 
-  constructor(platformStrategy: LocationStrategy, platformLocation: PlatformLocation) {
-    this._platformStrategy = platformStrategy;
-    const browserBaseHref = this._platformStrategy.getBaseHref();
-    this._platformLocation = platformLocation;
-    this._baseHref = stripTrailingSlash(_stripIndexHtml(browserBaseHref));
-    this._platformStrategy.onPopState((ev) => {
-      this._subject.emit({
+  constructor(locationStrategy: LocationStrategy) {
+    this._locationStrategy = locationStrategy;
+    const baseHref = this._locationStrategy.getBaseHref();
+    // Note: This class's interaction with base HREF does not fully follow the rules
+    // outlined in the spec https://www.freesoft.org/CIE/RFC/1808/18.htm.
+    // Instead of trying to fix individual bugs with more and more code, we should
+    // investigate using the URL constructor and providing the base as a second
+    // argument.
+    // https://developer.mozilla.org/en-US/docs/Web/API/URL/URL#parameters
+    this._basePath = _stripOrigin(stripTrailingSlash(_stripIndexHtml(baseHref)));
+    this._locationStrategy.onPopState((ev) => {
+      this._subject.next({
         'url': this.path(true),
         'pop': true,
         'state': ev.state,
         'type': ev.type,
       });
     });
+  }
+
+  /** @nodoc */
+  ngOnDestroy(): void {
+    this._urlChangeSubscription?.unsubscribe();
+    this._urlChangeListeners = [];
   }
 
   /**
@@ -92,7 +101,7 @@ export class Location {
   // TODO: vsavkin. Remove the boolean flag and always include hash once the deprecated router is
   // removed.
   path(includeHash: boolean = false): string {
-    return this.normalize(this._platformStrategy.path(includeHash));
+    return this.normalize(this._locationStrategy.path(includeHash));
   }
 
   /**
@@ -100,7 +109,7 @@ export class Location {
    * @returns The current value of the `history.state` object.
    */
   getState(): unknown {
-    return this._platformLocation.getState();
+    return this._locationStrategy.getState();
   }
 
   /**
@@ -124,7 +133,7 @@ export class Location {
    * @returns The normalized URL string.
    */
   normalize(url: string): string {
-    return Location.stripTrailingSlash(_stripBaseHref(this._baseHref, _stripIndexHtml(url)));
+    return Location.stripTrailingSlash(_stripBasePath(this._basePath, _stripIndexHtml(url)));
   }
 
   /**
@@ -141,7 +150,7 @@ export class Location {
     if (url && url[0] !== '/') {
       url = '/' + url;
     }
-    return this._platformStrategy.prepareExternalUrl(url);
+    return this._locationStrategy.prepareExternalUrl(url);
   }
 
   // TODO: rename this method to pushState
@@ -155,9 +164,11 @@ export class Location {
    *
    */
   go(path: string, query: string = '', state: any = null): void {
-    this._platformStrategy.pushState(state, '', path, query);
+    this._locationStrategy.pushState(state, '', path, query);
     this._notifyUrlChangeListeners(
-        this.prepareExternalUrl(path + normalizeQueryParams(query)), state);
+      this.prepareExternalUrl(path + normalizeQueryParams(query)),
+      state,
+    );
   }
 
   /**
@@ -169,23 +180,41 @@ export class Location {
    * @param state Location history state.
    */
   replaceState(path: string, query: string = '', state: any = null): void {
-    this._platformStrategy.replaceState(state, '', path, query);
+    this._locationStrategy.replaceState(state, '', path, query);
     this._notifyUrlChangeListeners(
-        this.prepareExternalUrl(path + normalizeQueryParams(query)), state);
+      this.prepareExternalUrl(path + normalizeQueryParams(query)),
+      state,
+    );
   }
 
   /**
    * Navigates forward in the platform's history.
    */
   forward(): void {
-    this._platformStrategy.forward();
+    this._locationStrategy.forward();
   }
 
   /**
    * Navigates back in the platform's history.
    */
   back(): void {
-    this._platformStrategy.back();
+    this._locationStrategy.back();
+  }
+
+  /**
+   * Navigate to a specific page from session history, identified by its relative position to the
+   * current page.
+   *
+   * @param relativePosition  Position of the target page in the history relative to the current
+   *     page.
+   * A negative value moves backwards, a positive value moves forwards, e.g. `location.historyGo(2)`
+   * moves forward two pages and `location.historyGo(-2)` moves back two pages. When we try to go
+   * beyond what's stored in the history session, we stay in the current page. Same behaviour occurs
+   * when `relativePosition` equals 0.
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/History_API#Moving_to_a_specific_point_in_history
+   */
+  historyGo(relativePosition: number = 0): void {
+    this._locationStrategy.historyGo?.(relativePosition);
   }
 
   /**
@@ -193,34 +222,54 @@ export class Location {
    * framework that are not detectible through "popstate" or "hashchange" events.
    *
    * @param fn The change handler function, which take a URL and a location history state.
+   * @returns A function that, when executed, unregisters a URL change listener.
    */
-  onUrlChange(fn: (url: string, state: unknown) => void) {
+  onUrlChange(fn: (url: string, state: unknown) => void): VoidFunction {
     this._urlChangeListeners.push(fn);
 
-    if (!this._urlChangeSubscription) {
-      this._urlChangeSubscription = this.subscribe(v => {
-        this._notifyUrlChangeListeners(v.url, v.state);
-      });
-    }
+    this._urlChangeSubscription ??= this.subscribe((v) => {
+      this._notifyUrlChangeListeners(v.url, v.state);
+    });
+
+    return () => {
+      const fnIndex = this._urlChangeListeners.indexOf(fn);
+      this._urlChangeListeners.splice(fnIndex, 1);
+
+      if (this._urlChangeListeners.length === 0) {
+        this._urlChangeSubscription?.unsubscribe();
+        this._urlChangeSubscription = null;
+      }
+    };
   }
 
   /** @internal */
   _notifyUrlChangeListeners(url: string = '', state: unknown) {
-    this._urlChangeListeners.forEach(fn => fn(url, state));
+    this._urlChangeListeners.forEach((fn) => fn(url, state));
   }
 
   /**
    * Subscribes to the platform's `popState` events.
    *
+   * Note: `Location.go()` does not trigger the `popState` event in the browser. Use
+   * `Location.onUrlChange()` to subscribe to URL changes instead.
+   *
    * @param value Event that is triggered when the state history changes.
    * @param exception The exception to throw.
+   *
+   * @see [onpopstate](https://developer.mozilla.org/en-US/docs/Web/API/WindowEventHandlers/onpopstate)
    *
    * @returns Subscribed events.
    */
   subscribe(
-      onNext: (value: PopStateEvent) => void, onThrow?: ((exception: any) => void)|null,
-      onReturn?: (() => void)|null): SubscriptionLike {
-    return this._subject.subscribe({next: onNext, error: onThrow, complete: onReturn});
+    onNext: (value: PopStateEvent) => void,
+    onThrow?: ((exception: any) => void) | null,
+    onReturn?: (() => void) | null,
+  ): SubscriptionLike {
+    return this._subject.subscribe({
+      next: onNext,
+      error: onThrow ?? undefined,
+      complete: onReturn ?? undefined,
+    });
   }
 
   /**
@@ -256,13 +305,34 @@ export class Location {
 }
 
 export function createLocation() {
-  return new Location(ɵɵinject(LocationStrategy as any), ɵɵinject(PlatformLocation as any));
+  return new Location(ɵɵinject(LocationStrategy as any));
 }
 
-function _stripBaseHref(baseHref: string, url: string): string {
-  return baseHref && url.startsWith(baseHref) ? url.substring(baseHref.length) : url;
+function _stripBasePath(basePath: string, url: string): string {
+  if (!basePath || !url.startsWith(basePath)) {
+    return url;
+  }
+  const strippedUrl = url.substring(basePath.length);
+  if (strippedUrl === '' || ['/', ';', '?', '#'].includes(strippedUrl[0])) {
+    return strippedUrl;
+  }
+  return url;
 }
 
 function _stripIndexHtml(url: string): string {
   return url.replace(/\/index.html$/, '');
+}
+
+function _stripOrigin(baseHref: string): string {
+  // DO NOT REFACTOR! Previously, this check looked like this:
+  // `/^(https?:)?\/\//.test(baseHref)`, but that resulted in
+  // syntactically incorrect code after Closure Compiler minification.
+  // This was likely caused by a bug in Closure Compiler, but
+  // for now, the check is rewritten to use `new RegExp` instead.
+  const isAbsoluteUrl = new RegExp('^(https?:)?//').test(baseHref);
+  if (isAbsoluteUrl) {
+    const [, pathname] = baseHref.split(/\/\/[^\/]+/);
+    return pathname;
+  }
+  return baseHref;
 }

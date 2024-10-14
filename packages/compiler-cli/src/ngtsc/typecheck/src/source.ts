@@ -3,26 +3,34 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {AbsoluteSourceSpan, ParseLocation, ParseSourceFile, ParseSourceSpan} from '@angular/compiler';
-import * as ts from 'typescript';
+import {
+  AbsoluteSourceSpan,
+  ParseLocation,
+  ParseSourceFile,
+  ParseSourceSpan,
+} from '@angular/compiler';
+import ts from 'typescript';
 
 import {TemplateId, TemplateSourceMapping} from '../api';
 import {getTemplateId} from '../diagnostics';
 
-import {TemplateSourceResolver} from './diagnostics';
 import {computeLineStartsMap, getLineAndCharacterFromPosition} from './line_mappings';
+import {TemplateSourceResolver} from './tcb_util';
 
 /**
  * Represents the source of a template that was processed during type-checking. This information is
  * used when translating parse offsets in diagnostics back to their original line/column location.
  */
 export class TemplateSource {
-  private lineStarts: number[]|null = null;
+  private lineStarts: number[] | null = null;
 
-  constructor(readonly mapping: TemplateSourceMapping, private file: ParseSourceFile) {}
+  constructor(
+    readonly mapping: TemplateSourceMapping,
+    private file: ParseSourceFile,
+  ) {}
 
   toParseSourceSpan(start: number, end: number): ParseSourceSpan {
     const startLoc = this.toParseLocation(start);
@@ -61,8 +69,11 @@ export class TemplateSourceManager implements TemplateSourceResolver {
     return getTemplateId(node);
   }
 
-  captureSource(node: ts.ClassDeclaration, mapping: TemplateSourceMapping, file: ParseSourceFile):
-      TemplateId {
+  captureSource(
+    node: ts.ClassDeclaration,
+    mapping: TemplateSourceMapping,
+    file: ParseSourceFile,
+  ): TemplateId {
     const id = getTemplateId(node);
     this.templateSources.set(id, new TemplateSource(mapping, file));
     return id;
@@ -75,7 +86,7 @@ export class TemplateSourceManager implements TemplateSourceResolver {
     return this.templateSources.get(id)!.mapping;
   }
 
-  toParseSourceSpan(id: TemplateId, span: AbsoluteSourceSpan): ParseSourceSpan|null {
+  toParseSourceSpan(id: TemplateId, span: AbsoluteSourceSpan): ParseSourceSpan | null {
     if (!this.templateSources.has(id)) {
       return null;
     }

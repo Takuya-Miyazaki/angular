@@ -3,29 +3,27 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {ConstantPool} from '../../constant_pool';
-import {Interpolation} from '../../expression_parser/ast';
+import {InputFlags} from '../../core';
+import {BindingType} from '../../expression_parser/ast';
+import {splitNsName} from '../../ml_parser/tags';
 import * as o from '../../output/output_ast';
-import {ParseSourceSpan} from '../../parse_util';
-import {splitAtColon} from '../../util';
+import {CssSelector} from '../../selector';
 import * as t from '../r3_ast';
 
-import {R3QueryMetadata} from './api';
 import {isI18nAttribute} from './i18n/util';
-
 
 /**
  * Checks whether an object key contains potentially unsafe chars, thus the key should be wrapped in
  * quotes. Note: we do not wrap all keys into quotes, as it may have impact on minification and may
- * bot work in some cases when object keys are mangled by minifier.
+ * not work in some cases when object keys are mangled by a minifier.
  *
  * TODO(FW-1136): this is a temporary solution, we need to come up with a better way of working with
  * inputs that contain potentially unsafe chars.
  */
-const UNSAFE_OBJECT_KEY_NAME_REGEXP = /[-.]/;
+export const UNSAFE_OBJECT_KEY_NAME_REGEXP = /[-.]/;
 
 /** Name of the temporary to use during data binding */
 export const TEMPORARY_NAME = '_t';
@@ -36,42 +34,29 @@ export const CONTEXT_NAME = 'ctx';
 /** Name of the RenderFlag passed into a template function */
 export const RENDER_FLAGS = 'rf';
 
-/** The prefix reference variables */
-export const REFERENCE_PREFIX = '_r';
-
-/** The name of the implicit context reference */
-export const IMPLICIT_REFERENCE = '$implicit';
-
-/** Non bindable attribute name **/
-export const NON_BINDABLE_ATTR = 'ngNonBindable';
-
 /**
  * Creates an allocator for a temporary variable.
  *
  * A variable declaration is added to the statements the first time the allocator is invoked.
  */
-export function temporaryAllocator(statements: o.Statement[], name: string): () => o.ReadVarExpr {
-  let temp: o.ReadVarExpr|null = null;
+export function temporaryAllocator(
+  pushStatement: (st: o.Statement) => void,
+  name: string,
+): () => o.ReadVarExpr {
+  let temp: o.ReadVarExpr | null = null;
   return () => {
     if (!temp) {
-      statements.push(new o.DeclareVarStmt(TEMPORARY_NAME, undefined, o.DYNAMIC_TYPE));
+      pushStatement(new o.DeclareVarStmt(TEMPORARY_NAME, undefined, o.DYNAMIC_TYPE));
       temp = o.variable(name);
     }
     return temp;
   };
 }
 
-
-export function unsupported(this: void|Function, feature: string): never {
-  if (this) {
-    throw new Error(`Builder ${this.constructor.name} doesn't support ${feature} yet`);
-  }
-  throw new Error(`Feature ${feature} is not supported yet`);
-}
-
-export function invalid<T>(this: t.Visitor, arg: o.Expression|o.Statement|t.Node): never {
+export function invalid<T>(this: t.Visitor, arg: o.Expression | o.Statement | t.Node): never {
   throw new Error(
-      `Invalid state: Visitor ${this.constructor.name} doesn't handle ${arg.constructor.name}`);
+    `Invalid state: Visitor ${this.constructor.name} doesn't handle ${arg.constructor.name}`,
+  );
 }
 
 export function asLiteral(value: any): o.Expression {
@@ -81,81 +66,142 @@ export function asLiteral(value: any): o.Expression {
   return o.literal(value, o.INFERRED_TYPE);
 }
 
-export function conditionallyCreateMapObjectLiteral(
-    keys: {[key: string]: string|string[]}, keepDeclared?: boolean): o.Expression|null {
-  if (Object.getOwnPropertyNames(keys).length > 0) {
-    return mapToExpression(keys, keepDeclared);
-  }
-  return null;
-}
+/**
+ * Serializes inputs and outputs for `defineDirective` and `defineComponent`.
+ *
+ * This will attempt to generate optimized data structures to minimize memory or
+ * file size of fully compiled applications.
+ */
+export function conditionallyCreateDirectiveBindingLiteral(
+  map: Record<
+    string,
+    | string
+    | {
+        classPropertyName: string;
+        bindingPropertyName: string;
+        transformFunction: o.Expression | null;
+        isSignal: boolean;
+      }
+  >,
+  forInputs?: boolean,
+): o.Expression | null {
+  const keys = Object.getOwnPropertyNames(map);
 
-function mapToExpression(
-    map: {[key: string]: string|string[]}, keepDeclared?: boolean): o.Expression {
-  return o.literalMap(Object.getOwnPropertyNames(map).map(key => {
-    // canonical syntax: `dirProp: publicProp`
-    // if there is no `:`, use dirProp = elProp
-    const value = map[key];
-    let declaredName: string;
-    let publicName: string;
-    let minifiedName: string;
-    if (Array.isArray(value)) {
-      [publicName, declaredName] = value;
-    } else {
-      [declaredName, publicName] = splitAtColon(key, [key, value]);
-    }
-    minifiedName = declaredName;
-    return {
-      key: minifiedName,
-      // put quotes around keys that contain potentially unsafe characters
-      quoted: UNSAFE_OBJECT_KEY_NAME_REGEXP.test(minifiedName),
-      value: (keepDeclared && publicName !== declaredName) ?
-          o.literalArr([asLiteral(publicName), asLiteral(declaredName)]) :
-          asLiteral(publicName)
-    };
-  }));
+  if (keys.length === 0) {
+    return null;
+  }
+
+  return o.literalMap(
+    keys.map((key) => {
+      const value = map[key];
+      let declaredName: string;
+      let publicName: string;
+      let minifiedName: string;
+      let expressionValue: o.Expression;
+
+      if (typeof value === 'string') {
+        // canonical syntax: `dirProp: publicProp`
+        declaredName = key;
+        minifiedName = key;
+        publicName = value;
+        expressionValue = asLiteral(publicName);
+      } else {
+        minifiedName = key;
+        declaredName = value.classPropertyName;
+        publicName = value.bindingPropertyName;
+
+        const differentDeclaringName = publicName !== declaredName;
+        const hasDecoratorInputTransform = value.transformFunction !== null;
+        let flags = InputFlags.None;
+
+        // Build up input flags
+        if (value.isSignal) {
+          flags |= InputFlags.SignalBased;
+        }
+        if (hasDecoratorInputTransform) {
+          flags |= InputFlags.HasDecoratorInputTransform;
+        }
+
+        // Inputs, compared to outputs, will track their declared name (for `ngOnChanges`), support
+        // decorator input transform functions, or store flag information if there is any.
+        if (
+          forInputs &&
+          (differentDeclaringName || hasDecoratorInputTransform || flags !== InputFlags.None)
+        ) {
+          const result = [o.literal(flags), asLiteral(publicName)];
+
+          if (differentDeclaringName || hasDecoratorInputTransform) {
+            result.push(asLiteral(declaredName));
+
+            if (hasDecoratorInputTransform) {
+              result.push(value.transformFunction!);
+            }
+          }
+
+          expressionValue = o.literalArr(result);
+        } else {
+          expressionValue = asLiteral(publicName);
+        }
+      }
+
+      return {
+        key: minifiedName,
+        // put quotes around keys that contain potentially unsafe characters
+        quoted: UNSAFE_OBJECT_KEY_NAME_REGEXP.test(minifiedName),
+        value: expressionValue,
+      };
+    }),
+  );
 }
 
 /**
- *  Remove trailing null nodes as they are implied.
+ * A representation for an object literal used during codegen of definition objects. The generic
+ * type `T` allows to reference a documented type of the generated structure, such that the
+ * property names that are set can be resolved to their documented declaration.
  */
-export function trimTrailingNulls(parameters: o.Expression[]): o.Expression[] {
-  while (o.isNull(parameters[parameters.length - 1])) {
-    parameters.pop();
-  }
-  return parameters;
-}
+export class DefinitionMap<T = any> {
+  values: {key: string; quoted: boolean; value: o.Expression}[] = [];
 
-export function getQueryPredicate(
-    query: R3QueryMetadata, constantPool: ConstantPool): o.Expression {
-  if (Array.isArray(query.predicate)) {
-    let predicate: o.Expression[] = [];
-    query.predicate.forEach((selector: string): void => {
-      // Each item in predicates array may contain strings with comma-separated refs
-      // (for ex. 'ref, ref1, ..., refN'), thus we extract individual refs and store them
-      // as separate array entities
-      const selectors = selector.split(',').map(token => o.literal(token.trim()));
-      predicate.push(...selectors);
-    });
-    return constantPool.getConstLiteral(o.literalArr(predicate), true);
-  } else {
-    return query.predicate;
-  }
-}
-
-export function noop() {}
-
-export class DefinitionMap {
-  values: {key: string, quoted: boolean, value: o.Expression}[] = [];
-
-  set(key: string, value: o.Expression|null): void {
+  set(key: keyof T, value: o.Expression | null): void {
     if (value) {
-      this.values.push({key, value, quoted: false});
+      const existing = this.values.find((value) => value.key === key);
+
+      if (existing) {
+        existing.value = value;
+      } else {
+        this.values.push({key: key as string, value, quoted: false});
+      }
     }
   }
 
   toLiteralMap(): o.LiteralMapExpr {
     return o.literalMap(this.values);
   }
+}
+
+/**
+ * Creates a `CssSelector` from an AST node.
+ */
+export function createCssSelectorFromNode(node: t.Element | t.Template): CssSelector {
+  const elementName = node instanceof t.Element ? node.name : 'ng-template';
+  const attributes = getAttrsForDirectiveMatching(node);
+  const cssSelector = new CssSelector();
+  const elementNameNoNs = splitNsName(elementName)[1];
+
+  cssSelector.setElement(elementNameNoNs);
+
+  Object.getOwnPropertyNames(attributes).forEach((name) => {
+    const nameNoNs = splitNsName(name)[1];
+    const value = attributes[name];
+
+    cssSelector.addAttribute(nameNoNs, value);
+    if (name.toLowerCase() === 'class') {
+      const classes = value.trim().split(/\s+/);
+      classes.forEach((className) => cssSelector.addClassName(className));
+    }
+  });
+
+  return cssSelector;
 }
 
 /**
@@ -167,61 +213,27 @@ export class DefinitionMap {
  * object maps a property name to its (static) value. For any bindings, this map simply maps the
  * property name to an empty string.
  */
-export function getAttrsForDirectiveMatching(elOrTpl: t.Element|
-                                             t.Template): {[name: string]: string} {
+function getAttrsForDirectiveMatching(elOrTpl: t.Element | t.Template): {[name: string]: string} {
   const attributesMap: {[name: string]: string} = {};
 
-
   if (elOrTpl instanceof t.Template && elOrTpl.tagName !== 'ng-template') {
-    elOrTpl.templateAttrs.forEach(a => attributesMap[a.name] = '');
+    elOrTpl.templateAttrs.forEach((a) => (attributesMap[a.name] = ''));
   } else {
-    elOrTpl.attributes.forEach(a => {
+    elOrTpl.attributes.forEach((a) => {
       if (!isI18nAttribute(a.name)) {
         attributesMap[a.name] = a.value;
       }
     });
 
-    elOrTpl.inputs.forEach(i => {
-      attributesMap[i.name] = '';
+    elOrTpl.inputs.forEach((i) => {
+      if (i.type === BindingType.Property || i.type === BindingType.TwoWay) {
+        attributesMap[i.name] = '';
+      }
     });
-    elOrTpl.outputs.forEach(o => {
+    elOrTpl.outputs.forEach((o) => {
       attributesMap[o.name] = '';
     });
   }
 
   return attributesMap;
-}
-
-/** Returns a call expression to a chained instruction, e.g. `property(params[0])(params[1])`. */
-export function chainedInstruction(
-    reference: o.ExternalReference, calls: o.Expression[][], span?: ParseSourceSpan|null) {
-  let expression = o.importExpr(reference, null, span) as o.Expression;
-
-  if (calls.length > 0) {
-    for (let i = 0; i < calls.length; i++) {
-      expression = expression.callFn(calls[i], span);
-    }
-  } else {
-    // Add a blank invocation, in case the `calls` array is empty.
-    expression = expression.callFn([], span);
-  }
-
-  return expression;
-}
-
-/**
- * Gets the number of arguments expected to be passed to a generated instruction in the case of
- * interpolation instructions.
- * @param interpolation An interpolation ast
- */
-export function getInterpolationArgsLength(interpolation: Interpolation) {
-  const {expressions, strings} = interpolation;
-  if (expressions.length === 1 && strings.length === 2 && strings[0] === '' && strings[1] === '') {
-    // If the interpolation has one interpolated value, but the prefix and suffix are both empty
-    // strings, we only pass one argument, to a special instruction like `propertyInterpolate` or
-    // `textInterpolate`.
-    return 1;
-  } else {
-    return expressions.length + strings.length;
-  }
 }

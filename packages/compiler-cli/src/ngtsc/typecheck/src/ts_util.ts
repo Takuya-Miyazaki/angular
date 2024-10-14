@@ -3,11 +3,12 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import * as ts from 'typescript';
-import {ClassDeclaration} from '../../reflection';
+import ts from 'typescript';
+
+import {addExpressionIdentifier, ExpressionIdentifier} from './comments';
 
 /**
  * A `Set` of `ts.SyntaxKind`s of `ts.Expression` which are safe to wrap in a `ts.AsExpression`
@@ -45,14 +46,14 @@ const SAFE_TO_CAST_WITHOUT_PARENS: Set<ts.SyntaxKind> = new Set([
 export function tsCastToAny(expr: ts.Expression): ts.Expression {
   // Wrap `expr` in parentheses if needed (see `SAFE_TO_CAST_WITHOUT_PARENS` above).
   if (!SAFE_TO_CAST_WITHOUT_PARENS.has(expr.kind)) {
-    expr = ts.createParen(expr);
+    expr = ts.factory.createParenthesizedExpression(expr);
   }
 
   // The outer expression is always wrapped in parentheses.
-  return ts.createParen(
-      ts.createAsExpression(expr, ts.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword)));
+  return ts.factory.createParenthesizedExpression(
+    ts.factory.createAsExpression(expr, ts.factory.createKeywordTypeNode(ts.SyntaxKind.AnyKeyword)),
+  );
 }
-
 
 /**
  * Create an expression which instantiates an element by its HTML tagName.
@@ -61,12 +62,15 @@ export function tsCastToAny(expr: ts.Expression): ts.Expression {
  * based on the tag name, including for custom elements that have appropriate .d.ts definitions.
  */
 export function tsCreateElement(tagName: string): ts.Expression {
-  const createElement = ts.createPropertyAccess(
-      /* expression */ ts.createIdentifier('document'), 'createElement');
-  return ts.createCall(
-      /* expression */ createElement,
-      /* typeArguments */ undefined,
-      /* argumentsArray */[ts.createLiteral(tagName)]);
+  const createElement = ts.factory.createPropertyAccessExpression(
+    /* expression */ ts.factory.createIdentifier('document'),
+    'createElement',
+  );
+  return ts.factory.createCallExpression(
+    /* expression */ createElement,
+    /* typeArguments */ undefined,
+    /* argumentsArray */ [ts.factory.createStringLiteral(tagName)],
+  );
 }
 
 /**
@@ -77,13 +81,25 @@ export function tsCreateElement(tagName: string): ts.Expression {
  * Unlike with `tsCreateVariable`, the type of the variable is explicitly specified.
  */
 export function tsDeclareVariable(id: ts.Identifier, type: ts.TypeNode): ts.VariableStatement {
-  const decl = ts.createVariableDeclaration(
-      /* name */ id,
-      /* type */ type,
-      /* initializer */ ts.createNonNullExpression(ts.createNull()));
-  return ts.createVariableStatement(
-      /* modifiers */ undefined,
-      /* declarationList */[decl]);
+  // When we create a variable like `var _t1: boolean = null!`, TypeScript actually infers `_t1`
+  // to be `never`, instead of a `boolean`. To work around it, we cast the value
+  // in the initializer, e.g. `var _t1 = null! as boolean;`.
+  addExpressionIdentifier(type, ExpressionIdentifier.VARIABLE_AS_EXPRESSION);
+  const initializer: ts.Expression = ts.factory.createAsExpression(
+    ts.factory.createNonNullExpression(ts.factory.createNull()),
+    type,
+  );
+
+  const decl = ts.factory.createVariableDeclaration(
+    /* name */ id,
+    /* exclamationToken */ undefined,
+    /* type */ undefined,
+    /* initializer */ initializer,
+  );
+  return ts.factory.createVariableStatement(
+    /* modifiers */ undefined,
+    /* declarationList */ [decl],
+  );
 }
 
 /**
@@ -96,9 +112,12 @@ export function tsDeclareVariable(id: ts.Identifier, type: ts.TypeNode): ts.Vari
  * @param coercedInputName The field name of the coerced input.
  */
 export function tsCreateTypeQueryForCoercedInput(
-    typeName: ts.EntityName, coercedInputName: string): ts.TypeQueryNode {
-  return ts.createTypeQueryNode(
-      ts.createQualifiedName(typeName, `ngAcceptInputType_${coercedInputName}`));
+  typeName: ts.EntityName,
+  coercedInputName: string,
+): ts.TypeQueryNode {
+  return ts.factory.createTypeQueryNode(
+    ts.factory.createQualifiedName(typeName, `ngAcceptInputType_${coercedInputName}`),
+  );
 }
 
 /**
@@ -108,67 +127,56 @@ export function tsCreateTypeQueryForCoercedInput(
  * expression.
  */
 export function tsCreateVariable(
-    id: ts.Identifier, initializer: ts.Expression): ts.VariableStatement {
-  const decl = ts.createVariableDeclaration(
-      /* name */ id,
-      /* type */ undefined,
-      /* initializer */ initializer);
-  return ts.createVariableStatement(
-      /* modifiers */ undefined,
-      /* declarationList */[decl]);
+  id: ts.Identifier,
+  initializer: ts.Expression,
+  flags: ts.NodeFlags | null = null,
+): ts.VariableStatement {
+  const decl = ts.factory.createVariableDeclaration(
+    /* name */ id,
+    /* exclamationToken */ undefined,
+    /* type */ undefined,
+    /* initializer */ initializer,
+  );
+  return ts.factory.createVariableStatement(
+    /* modifiers */ undefined,
+    /* declarationList */ flags === null
+      ? [decl]
+      : ts.factory.createVariableDeclarationList([decl], flags),
+  );
 }
 
 /**
  * Construct a `ts.CallExpression` that calls a method on a receiver.
  */
 export function tsCallMethod(
-    receiver: ts.Expression, methodName: string, args: ts.Expression[] = []): ts.CallExpression {
-  const methodAccess = ts.createPropertyAccess(receiver, methodName);
-  return ts.createCall(
-      /* expression */ methodAccess,
-      /* typeArguments */ undefined,
-      /* argumentsArray */ args);
+  receiver: ts.Expression,
+  methodName: string,
+  args: ts.Expression[] = [],
+): ts.CallExpression {
+  const methodAccess = ts.factory.createPropertyAccessExpression(receiver, methodName);
+  return ts.factory.createCallExpression(
+    /* expression */ methodAccess,
+    /* typeArguments */ undefined,
+    /* argumentsArray */ args,
+  );
 }
 
-export function checkIfClassIsExported(node: ClassDeclaration): boolean {
-  // A class is exported if one of two conditions is met:
-  // 1) it has the 'export' modifier.
-  // 2) it's declared at the top level, and there is an export statement for the class.
-  if (node.modifiers !== undefined &&
-      node.modifiers.some(mod => mod.kind === ts.SyntaxKind.ExportKeyword)) {
-    // Condition 1 is true, the class has an 'export' keyword attached.
-    return true;
-  } else if (
-      node.parent !== undefined && ts.isSourceFile(node.parent) &&
-      checkIfFileHasExport(node.parent, node.name.text)) {
-    // Condition 2 is true, the class is exported via an 'export {}' statement.
-    return true;
-  }
-  return false;
+export function isAccessExpression(
+  node: ts.Node,
+): node is ts.ElementAccessExpression | ts.PropertyAccessExpression {
+  return ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node);
 }
 
-function checkIfFileHasExport(sf: ts.SourceFile, name: string): boolean {
-  for (const stmt of sf.statements) {
-    if (ts.isExportDeclaration(stmt) && stmt.exportClause !== undefined &&
-        ts.isNamedExports(stmt.exportClause)) {
-      for (const element of stmt.exportClause.elements) {
-        if (element.propertyName === undefined && element.name.text === name) {
-          // The named declaration is directly exported.
-          return true;
-        } else if (element.propertyName !== undefined && element.propertyName.text == name) {
-          // The named declaration is exported via an alias.
-          return true;
-        }
-      }
-    }
+/**
+ * Creates a TypeScript node representing a numeric value.
+ */
+export function tsNumericExpression(value: number): ts.NumericLiteral | ts.PrefixUnaryExpression {
+  // As of TypeScript 5.3 negative numbers are represented as `prefixUnaryOperator` and passing a
+  // negative number (even as a string) into `createNumericLiteral` will result in an error.
+  if (value < 0) {
+    const operand = ts.factory.createNumericLiteral(Math.abs(value));
+    return ts.factory.createPrefixUnaryExpression(ts.SyntaxKind.MinusToken, operand);
   }
-  return false;
-}
 
-export function checkIfGenericTypesAreUnbound(node: ClassDeclaration<ts.ClassDeclaration>):
-    boolean {
-  if (node.typeParameters === undefined) {
-    return true;
-  }
-  return node.typeParameters.every(param => param.constraint === undefined);
+  return ts.factory.createNumericLiteral(value);
 }

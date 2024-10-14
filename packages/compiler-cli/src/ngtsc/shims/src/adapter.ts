@@ -3,10 +3,10 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import * as ts from 'typescript';
+import ts from 'typescript';
 
 import {absoluteFrom, absoluteFromSourceFile, AbsoluteFsPath} from '../../file_system';
 import {isDtsPath} from '../../util/src/typescript';
@@ -76,9 +76,12 @@ export class ShimAdapter {
   readonly extensionPrefixes: string[] = [];
 
   constructor(
-      private delegate: Pick<ts.CompilerHost, 'getSourceFile'|'fileExists'>,
-      tsRootFiles: AbsoluteFsPath[], topLevelGenerators: TopLevelShimGenerator[],
-      perFileGenerators: PerFileShimGenerator[], oldProgram: ts.Program|null) {
+    private delegate: Pick<ts.CompilerHost, 'getSourceFile' | 'fileExists'>,
+    tsRootFiles: AbsoluteFsPath[],
+    topLevelGenerators: TopLevelShimGenerator[],
+    perFileGenerators: PerFileShimGenerator[],
+    oldProgram: ts.Program | null,
+  ) {
     // Initialize `this.generators` with a regex that matches each generator's paths.
     for (const gen of perFileGenerators) {
       // This regex matches paths for shims from this generator. The first (and only) capture group
@@ -141,7 +144,7 @@ export class ShimAdapter {
    * If `fileName` does not refer to a potential shim file, `null` is returned. If a corresponding
    * base file could not be determined, `undefined` is returned instead.
    */
-  maybeGenerate(fileName: AbsoluteFsPath): ts.SourceFile|null|undefined {
+  maybeGenerate(fileName: AbsoluteFsPath): ts.SourceFile | null | undefined {
     // Fast path: either this filename has been proven not to be a shim before, or it is a known
     // shim and no generation is required.
     if (this.notShims.has(fileName)) {
@@ -168,31 +171,26 @@ export class ShimAdapter {
       // This _might_ be a shim, if an underlying base file exists. The base file might be .ts or
       // .tsx.
       let baseFileName = absoluteFrom(prefix + '.ts');
-      if (!this.delegate.fileExists(baseFileName)) {
+      // Retrieve the original file for which the shim will be generated.
+      let inputFile = this.delegate.getSourceFile(baseFileName, ts.ScriptTarget.Latest);
+      if (inputFile === undefined) {
         // No .ts file by that name - try .tsx.
         baseFileName = absoluteFrom(prefix + '.tsx');
-        if (!this.delegate.fileExists(baseFileName)) {
-          // This isn't a shim after all since there is no original file which would have triggered
-          // its generation, even though the path is right. There are a few reasons why this could
-          // occur:
-          //
-          // * when resolving an import to an .ngfactory.d.ts file, the module resolution algorithm
-          //   will first look for an .ngfactory.ts file in its place, which will be requested here.
-          // * when the user writes a bad import.
-          // * when a file is present in one compilation and removed in the next incremental step.
-          //
-          // Note that this does not add the filename to `notShims`, so this path is not cached.
-          // That's okay as these cases above are edge cases and do not occur regularly in normal
-          // operations.
-          return undefined;
-        }
+        inputFile = this.delegate.getSourceFile(baseFileName, ts.ScriptTarget.Latest);
       }
-
-      // Retrieve the original file for which the shim will be generated.
-      const inputFile = this.delegate.getSourceFile(baseFileName, ts.ScriptTarget.Latest);
       if (inputFile === undefined || isShim(inputFile)) {
-        // Something strange happened here. This case is also not cached in `notShims`, but this
-        // path is not expected to occur in reality so this shouldn't be a problem.
+        // This isn't a shim after all since there is no original file which would have triggered
+        // its generation, even though the path is right. There are a few reasons why this could
+        // occur:
+        //
+        // * when resolving an import to an .ngfactory.d.ts file, the module resolution algorithm
+        //   will first look for an .ngfactory.ts file in its place, which will be requested here.
+        // * when the user writes a bad import.
+        // * when a file is present in one compilation and removed in the next incremental step.
+        //
+        // Note that this does not add the filename to `notShims`, so this path is not cached.
+        // That's okay as these cases above are edge cases and do not occur regularly in normal
+        // operations.
         return undefined;
       }
 
@@ -206,9 +204,11 @@ export class ShimAdapter {
   }
 
   private generateSpecific(
-      fileName: AbsoluteFsPath, generator: PerFileShimGenerator,
-      inputFile: ts.SourceFile): ts.SourceFile {
-    let priorShimSf: ts.SourceFile|null = null;
+    fileName: AbsoluteFsPath,
+    generator: PerFileShimGenerator,
+    inputFile: ts.SourceFile,
+  ): ts.SourceFile {
+    let priorShimSf: ts.SourceFile | null = null;
     if (this.priorShims.has(fileName)) {
       // In the previous program a shim with this name already existed. It's passed to the shim
       // generator which may reuse it instead of generating a fresh shim.

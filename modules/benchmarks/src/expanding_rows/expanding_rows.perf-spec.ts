@@ -3,11 +3,11 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
+import {runBenchmark} from '@angular/build-tooling/bazel/benchmark/driver-utilities';
 import {$, browser} from 'protractor';
-import {runBenchmark} from '../../../../dev-infra/benchmark/driver-utilities';
 
 describe('benchmarks', () => {
   it('should work for create', async () => {
@@ -18,7 +18,7 @@ describe('benchmarks', () => {
       ignoreBrowserSynchronization: true,
       params: [],
       prepare: () => $('#reset').click(),
-      work: () => $('#init').click()
+      work: () => $('#init').click(),
     });
   });
 });

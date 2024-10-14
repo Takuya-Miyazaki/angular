@@ -3,12 +3,14 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
-import '@angular/core/test/bundling/util/src/reflect_metadata';
-import './translations';
-import {CommonModule} from '@angular/common';
-import {Component, Injectable, NgModule, ViewEncapsulation, ɵmarkDirty as markDirty, ɵrenderComponent as renderComponent} from '@angular/core';
+
+import {ChangeDetectorRef, Component, Injectable, NgModule, ViewEncapsulation} from '@angular/core';
+import {loadTranslations} from '@angular/localize';
+import {BrowserModule, platformBrowser} from '@angular/platform-browser';
+
+import {translations} from './translations';
 
 class Todo {
   editing: boolean;
@@ -20,7 +22,10 @@ class Todo {
     this._title = value.trim();
   }
 
-  constructor(private _title: string, public completed: boolean = false) {
+  constructor(
+    private _title: string,
+    public completed: boolean = false,
+  ) {
     this.editing = false;
   }
 }
@@ -45,7 +50,7 @@ class TodoStore {
   }
 
   setAllTo(completed: boolean) {
-    this.todos.forEach((t: Todo) => t.completed = completed);
+    this.todos.forEach((t: Todo) => (t.completed = completed));
   }
 
   removeCompleted() {
@@ -121,17 +126,21 @@ class TodoStore {
     </footer>
   </section>
   `,
-  // TODO(misko): switch over to OnPush
-  // changeDetection: ChangeDetectionStrategy.OnPush
+  standalone: false,
 })
 class ToDoAppComponent {
   newTodoText = '';
 
-  constructor(public todoStore: TodoStore) {}
+  constructor(
+    public todoStore: TodoStore,
+    private readonly cdr: ChangeDetectorRef,
+  ) {
+    (window as any).todoAppComponent = this;
+  }
 
   cancelEditingTodo(todo: Todo) {
     todo.editing = false;
-    markDirty(this);
+    this.cdr.detectChanges();
   }
 
   finishUpdatingTodo(todo: Todo, editedTitle: string) {
@@ -147,22 +156,22 @@ class ToDoAppComponent {
 
   editTodo(todo: Todo) {
     todo.editing = true;
-    markDirty(this);
+    this.cdr.detectChanges();
   }
 
   removeCompleted() {
     this.todoStore.removeCompleted();
-    markDirty(this);
+    this.cdr.detectChanges();
   }
 
   toggleCompletion(todo: Todo) {
     this.todoStore.toggleCompletion(todo);
-    markDirty(this);
+    this.cdr.detectChanges();
   }
 
   remove(todo: Todo) {
     this.todoStore.remove(todo);
-    markDirty(this);
+    this.cdr.detectChanges();
   }
 
   addTodo() {
@@ -170,27 +179,32 @@ class ToDoAppComponent {
       this.todoStore.add(this.newTodoText);
       this.newTodoText = '';
     }
-    markDirty(this);
+    this.cdr.detectChanges();
   }
 
   toggleAllTodos(checked: boolean) {
     this.todoStore.setAllTo(checked);
-    markDirty(this);
+    this.cdr.detectChanges();
   }
 
   updateEditedTodoValue(todo: Todo, value: string) {
     todo.title = value;
-    markDirty(this);
+    this.cdr.detectChanges();
   }
 
   updateNewTodoValue(value: string) {
     this.newTodoText = value;
-    markDirty(this);
+    this.cdr.detectChanges();
   }
 }
 
-@NgModule({declarations: [ToDoAppComponent], imports: [CommonModule]})
-class ToDoAppModule {
-}
+@NgModule({
+  declarations: [ToDoAppComponent],
+  imports: [BrowserModule],
+  bootstrap: [ToDoAppComponent],
+})
+class ToDoAppModule {}
 
-renderComponent(ToDoAppComponent);
+loadTranslations(translations);
+
+(window as any).appReady = platformBrowser().bootstrapModule(ToDoAppModule, {ngZone: 'noop'});

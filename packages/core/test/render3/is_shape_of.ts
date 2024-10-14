@@ -3,10 +3,10 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {TI18n} from '@angular/core/src/render3/interfaces/i18n';
+import {TI18n, TIcu} from '@angular/core/src/render3/interfaces/i18n';
 import {TNode} from '@angular/core/src/render3/interfaces/node';
 import {TView} from '@angular/core/src/render3/interfaces/view';
 
@@ -61,8 +61,7 @@ export type ShapeOf<T> = {
  */
 export function isShapeOf<T>(obj: any, shapeOf: ShapeOf<T>): obj is T {
   if (typeof obj === 'object' && obj) {
-    return Object.keys(shapeOf).reduce(
-        (prev, key) => prev && obj.hasOwnProperty(key), true as boolean);
+    return Object.keys(shapeOf).every((key) => obj.hasOwnProperty(key));
   }
   return false;
 }
@@ -75,12 +74,28 @@ export function isTI18n(obj: any): obj is TI18n {
   return isShapeOf<TI18n>(obj, ShapeOfTI18n);
 }
 const ShapeOfTI18n: ShapeOf<TI18n> = {
-  vars: true,
   create: true,
   update: true,
-  icus: true,
+  ast: true,
+  parentTNodeIndex: true,
 };
 
+/**
+ * Determines if `obj` matches the shape `TIcu`.
+ * @param obj
+ */
+export function isTIcu(obj: any): obj is TIcu {
+  return isShapeOf<TIcu>(obj, ShapeOfTIcu);
+}
+const ShapeOfTIcu: ShapeOf<TIcu> = {
+  type: true,
+  anchorIdx: true,
+  currentCaseLViewIndex: true,
+  cases: true,
+  create: true,
+  remove: true,
+  update: true,
+};
 
 /**
  * Determines if `obj` matches the shape `TView`.
@@ -91,11 +106,10 @@ export function isTView(obj: any): obj is TView {
 }
 const ShapeOfTView: ShapeOf<TView> = {
   type: true,
-  id: true,
   blueprint: true,
   template: true,
   viewQuery: true,
-  node: true,
+  declTNode: true,
   firstCreatePass: true,
   firstUpdatePass: true,
   data: true,
@@ -104,7 +118,7 @@ const ShapeOfTView: ShapeOf<TView> = {
   staticViewQueries: true,
   staticContentQueries: true,
   firstChild: true,
-  expandoInstructions: true,
+  hostBindingOpCodes: true,
   directiveRegistry: true,
   pipeRegistry: true,
   preOrderHooks: true,
@@ -121,8 +135,8 @@ const ShapeOfTView: ShapeOf<TView> = {
   schemas: true,
   consts: true,
   incompleteFirstPass: true,
+  ssrId: true,
 };
-
 
 /**
  * Determines if `obj` matches the shape `TI18n`.
@@ -134,22 +148,25 @@ export function isTNode(obj: any): obj is TNode {
 const ShapeOfTNode: ShapeOf<TNode> = {
   type: true,
   index: true,
+  insertBeforeIndex: true,
   injectorIndex: true,
   directiveStart: true,
   directiveEnd: true,
   directiveStylingLast: true,
+  componentOffset: true,
   propertyBindings: true,
   flags: true,
   providerIndexes: true,
-  tagName: true,
+  value: true,
   attrs: true,
   mergedAttrs: true,
   localNames: true,
   initialInputs: true,
   inputs: true,
   outputs: true,
-  tViews: true,
+  tView: true,
   next: true,
+  prev: true,
   projectionNext: true,
   child: true,
   parent: true,

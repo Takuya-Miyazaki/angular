@@ -3,9 +3,10 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
+import {runfiles} from '@bazel/runfiles';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -13,7 +14,8 @@ import {SymbolExtractor} from './symbol_extractor';
 
 describe('scenarios', () => {
   const symbolExtractorSpecDir = path.dirname(
-      require.resolve('angular/tools/symbol-extractor/symbol_extractor_spec/empty.json'));
+    runfiles.resolve('angular/tools/symbol-extractor/symbol_extractor_spec/empty.json'),
+  );
   const scenarioFiles = fs.readdirSync(symbolExtractorSpecDir);
   for (let i = 0; i < scenarioFiles.length; i++) {
     const filePath = scenarioFiles[i];
@@ -46,11 +48,14 @@ describe('scenarios', () => {
 
   it('should properly capture classes in TypeScript ES2015 class output', () => {
     const jsFileContent = fs.readFileSync(
-        require.resolve(
-            'angular/tools/symbol-extractor/symbol_extractor_spec/es2015_class_output.mjs'),
-        'utf8');
-    const jsonFileContent =
-        fs.readFileSync(path.join(symbolExtractorSpecDir, 'es2015_class_output.json')).toString();
+      runfiles.resolve(
+        'angular/tools/symbol-extractor/symbol_extractor_spec/es2015_class_output.mjs',
+      ),
+      'utf8',
+    );
+    const jsonFileContent = fs
+      .readFileSync(path.join(symbolExtractorSpecDir, 'es2015_class_output.json'))
+      .toString();
     const symbols = SymbolExtractor.parse('es2015_class_output', jsFileContent);
     const diff = SymbolExtractor.diff(symbols, jsonFileContent);
     expect(diff).toEqual({});

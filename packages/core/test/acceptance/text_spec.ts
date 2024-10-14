@@ -3,7 +3,7 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 import {Component} from '@angular/core';
 import {TestBed} from '@angular/core/testing';
@@ -23,7 +23,8 @@ describe('text instructions', () => {
         <div>a{{one}}b{{two}}c</div>
         <div>a{{one}}b</div>
         <div>{{one}}</div>
-      `
+      `,
+      standalone: false,
     })
     class App {
       one = 1;
@@ -41,9 +42,9 @@ describe('text instructions', () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
 
-    const allTextContent =
-        Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('div'))
-            .map((div: HTMLDivElement) => div.textContent);
+    const allTextContent = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('div'),
+    ).map((div: HTMLDivElement) => div.textContent);
 
     expect(allTextContent).toEqual([
       'a1b2c3d4e5f6g7h8i9j',
@@ -63,7 +64,8 @@ describe('text instructions', () => {
     @Component({
       template: `
         <p>{{who | async}} sells {{(item | async)?.what}} down by the {{(item | async)?.where}}.</p>
-      `
+      `,
+      standalone: false,
     })
     class App {
       who = of('Sally');
@@ -84,6 +86,7 @@ describe('text instructions', () => {
   it('should not sanitize urls in interpolated text', () => {
     @Component({
       template: '<p>{{thisisfine}}</p>',
+      standalone: false,
     })
     class App {
       thisisfine = 'javascript:alert("image_of_dog_with_coffee_in_burning_building.gif")';
@@ -94,13 +97,15 @@ describe('text instructions', () => {
     fixture.detectChanges();
     const p = fixture.nativeElement.querySelector('p');
 
-    expect(p.textContent)
-        .toBe('javascript:alert("image_of_dog_with_coffee_in_burning_building.gif")');
+    expect(p.textContent).toBe(
+      'javascript:alert("image_of_dog_with_coffee_in_burning_building.gif")',
+    );
   });
 
   it('should not allow writing HTML in interpolated text', () => {
     @Component({
       template: '<div>{{test}}</div>',
+      standalone: false,
     })
     class App {
       test = '<h1>LOL, big text</h1>';
@@ -117,6 +122,7 @@ describe('text instructions', () => {
   it('should stringify functions used in bindings', () => {
     @Component({
       template: '<div>{{test}}</div>',
+      standalone: false,
     })
     class App {
       test = function foo() {};
@@ -127,6 +133,69 @@ describe('text instructions', () => {
     fixture.detectChanges();
     const div = fixture.nativeElement.querySelector('div');
 
-    expect(div.innerHTML).toBe('function foo() { }');
+    expect(div.innerHTML).toBe(fixture.componentInstance.test.toString());
+    expect(div.innerHTML).toContain('foo');
+  });
+
+  it('should stringify an object using its toString method', () => {
+    class TestObject {
+      toString() {
+        return 'toString';
+      }
+      valueOf() {
+        return 'valueOf';
+      }
+    }
+
+    @Component({
+      template: '{{object}}',
+      standalone: false,
+    })
+    class App {
+      object = new TestObject();
+    }
+
+    TestBed.configureTestingModule({declarations: [App]});
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toBe('toString');
+  });
+
+  it('should stringify a symbol', () => {
+    // This test is only valid on browsers that support Symbol.
+    if (typeof Symbol === 'undefined') {
+      return;
+    }
+
+    @Component({
+      template: '{{symbol}}',
+      standalone: false,
+    })
+    class App {
+      symbol = Symbol('hello');
+    }
+
+    TestBed.configureTestingModule({declarations: [App]});
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+
+    // Note that this uses `toContain`, because a polyfilled `Symbol` produces something like
+    // `Symbol(hello)_p.sc8s398cplk`, whereas the native one is `Symbol(hello)`.
+    expect(fixture.nativeElement.textContent).toContain('Symbol(hello)');
+  });
+
+  it('should handle binding syntax used inside quoted text', () => {
+    @Component({
+      template: `{{'Interpolations look like {{this}}'}}`,
+      standalone: false,
+    })
+    class App {}
+
+    TestBed.configureTestingModule({declarations: [App]});
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toBe('Interpolations look like {{this}}');
   });
 });

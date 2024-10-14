@@ -3,13 +3,15 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {Adapter, Context} from './adapter';
+import {Adapter} from './adapter';
 import {Database, Table} from './database';
+import {CacheTable} from './db-cache';
 import {DebugHandler} from './debug';
 import {DataGroupConfig} from './manifest';
+import {NamedCache} from './named-cache-storage';
 
 /**
  * A metadata record of how old a particular cached resource is.
@@ -32,12 +34,12 @@ interface LruNode {
   /**
    * The previous (more recent) node in the chain, or null if this is the head.
    */
-  previous: string|null;
+  previous: string | null;
 
   /**
    * The next (less recent) node in the chain, or null if this is the tail.
    */
-  next: string|null;
+  next: string | null;
 }
 
 /**
@@ -49,17 +51,17 @@ interface LruState {
   /**
    * URL of the head node, or null if the chain is empty.
    */
-  head: string|null;
+  head: string | null;
 
   /**
    * URL of the tail node, or null if the chain is empty.
    */
-  tail: string|null;
+  tail: string | null;
 
   /**
    * Map of URLs to data for each URL (including next/prev pointers).
    */
-  map: {[url: string]: LruNode|undefined};
+  map: {[url: string]: LruNode | undefined};
 
   /**
    * Count of the number of nodes in the chain.
@@ -95,7 +97,7 @@ class LruList {
   /**
    * Remove the tail.
    */
-  pop(): string|null {
+  pop(): string | null {
     // If there is no tail, return null.
     if (this.state.tail === null) {
       return null;
@@ -227,12 +229,12 @@ export class DataGroup {
   /**
    * The `Cache` instance in which resources belonging to this group are cached.
    */
-  private readonly cache: Promise<Cache>;
+  private readonly cache: Promise<NamedCache>;
 
   /**
    * Tracks the LRU state of resources in this cache.
    */
-  private _lru: LruList|null = null;
+  private _lru: LruList | null = null;
 
   /**
    * Database table used to store the state of the LRU cache.
@@ -245,15 +247,17 @@ export class DataGroup {
   private readonly ageTable: Promise<Table>;
 
   constructor(
-      private scope: ServiceWorkerGlobalScope, private adapter: Adapter,
-      private config: DataGroupConfig, private db: Database, private debugHandler: DebugHandler,
-      private prefix: string) {
-    this.patterns = this.config.patterns.map(pattern => new RegExp(pattern));
-    this.cache = this.scope.caches.open(`${this.prefix}:dynamic:${this.config.name}:cache`);
-    this.lruTable = this.db.open(
-        `${this.prefix}:dynamic:${this.config.name}:lru`, this.config.cacheQueryOptions);
-    this.ageTable = this.db.open(
-        `${this.prefix}:dynamic:${this.config.name}:age`, this.config.cacheQueryOptions);
+    private scope: ServiceWorkerGlobalScope,
+    private adapter: Adapter,
+    private config: DataGroupConfig,
+    private db: Database,
+    private debugHandler: DebugHandler,
+    cacheNamePrefix: string,
+  ) {
+    this.patterns = config.patterns.map((pattern) => new RegExp(pattern));
+    this.cache = adapter.caches.open(`${cacheNamePrefix}:${config.name}:cache`);
+    this.lruTable = this.db.open(`${cacheNamePrefix}:${config.name}:lru`, config.cacheQueryOptions);
+    this.ageTable = this.db.open(`${cacheNamePrefix}:${config.name}:age`, config.cacheQueryOptions);
   }
 
   /**
@@ -284,7 +288,10 @@ export class DataGroup {
     } catch (err) {
       // Writing lru cache table failed. This could be a result of a full storage.
       // Continue serving clients as usual.
-      this.debugHandler.log(err, `DataGroup(${this.config.name}@${this.config.version}).syncLru()`);
+      this.debugHandler.log(
+        err as Error,
+        `DataGroup(${this.config.name}@${this.config.version}).syncLru()`,
+      );
       // TODO: Better detect/handle full storage; e.g. using
       // [navigator.storage](https://developer.mozilla.org/en-US/docs/Web/API/NavigatorStorage/storage).
     }
@@ -294,9 +301,9 @@ export class DataGroup {
    * Process a fetch event and return a `Response` if the resource is covered by this group,
    * or `null` otherwise.
    */
-  async handleFetch(req: Request, ctx: Context): Promise<Response|null> {
+  async handleFetch(req: Request, event: ExtendableEvent): Promise<Response | null> {
     // Do nothing
-    if (!this.patterns.some(pattern => pattern.test(req.url))) {
+    if (!this.patterns.some((pattern) => pattern.test(req.url))) {
       return null;
     }
 
@@ -314,9 +321,9 @@ export class DataGroup {
         // Handle the request with whatever strategy was selected.
         switch (this.config.strategy) {
           case 'freshness':
-            return this.handleFetchWithFreshness(req, ctx, lru);
+            return this.handleFetchWithFreshness(req, event, lru);
           case 'performance':
-            return this.handleFetchWithPerformance(req, ctx, lru);
+            return this.handleFetchWithPerformance(req, event, lru);
           default:
             throw new Error(`Unknown strategy: ${this.config.strategy}`);
         }
@@ -337,9 +344,16 @@ export class DataGroup {
     }
   }
 
-  private async handleFetchWithPerformance(req: Request, ctx: Context, lru: LruList):
-      Promise<Response|null> {
-    let res: Response|null|undefined = null;
+  private async handleFetchWithPerformance(
+    req: Request,
+    event: ExtendableEvent,
+    lru: LruList,
+  ): Promise<Response | null> {
+    // The 'performance' strategy prioritizes cached response. Prefer to avoid caching opaque
+    // responses to avoid caching an error response.
+    const okToCacheOpaque = this.config.cacheOpaqueResponses ?? false;
+
+    let res: Response | null | undefined = null;
 
     // Check the cache first. If the resource exists there (and is not expired), the cached
     // version can be used.
@@ -348,7 +362,7 @@ export class DataGroup {
       res = fromCache.res;
       // Check the age of the resource.
       if (this.config.refreshAheadMs !== undefined && fromCache.age >= this.config.refreshAheadMs) {
-        ctx.waitUntil(this.safeCacheResponse(req, this.safeFetch(req), lru));
+        event.waitUntil(this.safeCacheResponse(req, this.safeFetch(req), lru, okToCacheOpaque));
       }
     }
 
@@ -367,21 +381,27 @@ export class DataGroup {
       res = this.adapter.newResponse(null, {status: 504, statusText: 'Gateway Timeout'});
 
       // Cache the network response eventually.
-      ctx.waitUntil(this.safeCacheResponse(req, networkFetch, lru));
+      event.waitUntil(this.safeCacheResponse(req, networkFetch, lru, okToCacheOpaque));
     } else {
       // The request completed in time, so cache it inline with the response flow.
-      await this.safeCacheResponse(req, res, lru);
+      await this.safeCacheResponse(req, res, lru, okToCacheOpaque);
     }
 
     return res;
   }
 
-  private async handleFetchWithFreshness(req: Request, ctx: Context, lru: LruList):
-      Promise<Response|null> {
+  private async handleFetchWithFreshness(
+    req: Request,
+    event: ExtendableEvent,
+    lru: LruList,
+  ): Promise<Response | null> {
+    // The 'freshness' strategy prioritizes responses from the network. Therefore, it is OK to cache
+    // an opaque response, even if it is an error response.
+    const okToCacheOpaque = this.config.cacheOpaqueResponses ?? true;
+
     // Start with a network fetch.
     const [timeoutFetch, networkFetch] = this.networkFetchWithTimeout(req);
-    let res: Response|null|undefined;
-
+    let res: Response | null | undefined;
 
     // If that fetch errors, treat it as a timed out request.
     try {
@@ -392,14 +412,14 @@ export class DataGroup {
 
     // If the network fetch times out or errors, fall back on the cache.
     if (res === undefined) {
-      ctx.waitUntil(this.safeCacheResponse(req, networkFetch, lru, true));
+      event.waitUntil(this.safeCacheResponse(req, networkFetch, lru, okToCacheOpaque));
 
       // Ignore the age, the network response will be cached anyway due to the
       // behavior of freshness.
       const fromCache = await this.loadFromCache(req, lru);
-      res = (fromCache !== null) ? fromCache.res : null;
+      res = fromCache !== null ? fromCache.res : null;
     } else {
-      await this.safeCacheResponse(req, res, lru, true);
+      await this.safeCacheResponse(req, res, lru, okToCacheOpaque);
     }
 
     // Either the network fetch didn't time out, or the cache yielded a usable response.
@@ -412,7 +432,9 @@ export class DataGroup {
     return networkFetch;
   }
 
-  private networkFetchWithTimeout(req: Request): [Promise<Response|undefined>, Promise<Response>] {
+  private networkFetchWithTimeout(
+    req: Request,
+  ): [Promise<Response | undefined>, Promise<Response>] {
     // If there is a timeout configured, race a timeout Promise with the network fetch.
     // Otherwise, just fetch from the network directly.
     if (this.config.timeoutMs !== undefined) {
@@ -447,8 +469,11 @@ export class DataGroup {
   }
 
   private async safeCacheResponse(
-      req: Request, resOrPromise: Promise<Response>|Response, lru: LruList,
-      okToCacheOpaque?: boolean): Promise<void> {
+    req: Request,
+    resOrPromise: Promise<Response> | Response,
+    lru: LruList,
+    okToCacheOpaque?: boolean,
+  ): Promise<void> {
     try {
       const res = await resOrPromise;
       try {
@@ -457,9 +482,9 @@ export class DataGroup {
         // Saving the API response failed. This could be a result of a full storage.
         // Since this data is cached lazily and temporarily, continue serving clients as usual.
         this.debugHandler.log(
-            err,
-            `DataGroup(${this.config.name}@${this.config.version}).safeCacheResponse(${
-                req.url}, status: ${res.status})`);
+          err as Error,
+          `DataGroup(${this.config.name}@${this.config.version}).safeCacheResponse(${req.url}, status: ${res.status})`,
+        );
 
         // TODO: Better detect/handle full storage; e.g. using
         // [navigator.storage](https://developer.mozilla.org/en-US/docs/Web/API/NavigatorStorage/storage).
@@ -470,8 +495,10 @@ export class DataGroup {
     }
   }
 
-  private async loadFromCache(req: Request, lru: LruList):
-      Promise<{res: Response, age: number}|null> {
+  private async loadFromCache(
+    req: Request,
+    lru: LruList,
+  ): Promise<{res: Response; age: number} | null> {
     // Look for a response in the cache. If one exists, return it.
     const cache = await this.cache;
     let res = await cache.match(req, this.config.cacheQueryOptions);
@@ -509,8 +536,12 @@ export class DataGroup {
    * If the request times out on the server, an error will be returned but the real network
    * request will still be running in the background, to be cached when it completes.
    */
-  private async cacheResponse(req: Request, res: Response, lru: LruList, okToCacheOpaque = false):
-      Promise<void> {
+  private async cacheResponse(
+    req: Request,
+    res: Response,
+    lru: LruList,
+    okToCacheOpaque = false,
+  ): Promise<void> {
     // Only cache successful responses.
     if (!(res.ok || (okToCacheOpaque && res.type === 'opaque'))) {
       return;
@@ -550,10 +581,21 @@ export class DataGroup {
   async cleanup(): Promise<void> {
     // Remove both the cache and the database entries which track LRU stats.
     await Promise.all([
-      this.scope.caches.delete(`${this.prefix}:dynamic:${this.config.name}:cache`),
-      this.db.delete(`${this.prefix}:dynamic:${this.config.name}:age`),
-      this.db.delete(`${this.prefix}:dynamic:${this.config.name}:lru`),
+      this.cache.then((cache) => this.adapter.caches.delete(cache.name)),
+      this.ageTable.then((table) => this.db.delete(table.name)),
+      this.lruTable.then((table) => this.db.delete(table.name)),
     ]);
+  }
+  /**
+   * Return a list of the names of all caches used by this group.
+   */
+  async getCacheNames(): Promise<string[]> {
+    const [cache, ageTable, lruTable] = await Promise.all([
+      this.cache,
+      this.ageTable as Promise<CacheTable>,
+      this.lruTable as Promise<CacheTable>,
+    ]);
+    return [cache.name, ageTable.cacheName, lruTable.cacheName];
   }
 
   /**

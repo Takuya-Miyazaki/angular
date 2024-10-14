@@ -3,11 +3,12 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {bindAction, profile} from '../../util';
-import {buildTable, emptyTable} from '../util';
+import {buildTable, emptyTable, initTableUtils} from '../util';
+
 import {TableComponent} from './table';
 
 let table: TableComponent;
@@ -26,6 +27,8 @@ function init() {
   const rootEl = document.querySelector('largetable');
   rootEl.textContent = '';
   table = new TableComponent(rootEl);
+
+  initTableUtils();
 
   bindAction('#destroyDom', destroyDom);
   bindAction('#createDom', createDom);

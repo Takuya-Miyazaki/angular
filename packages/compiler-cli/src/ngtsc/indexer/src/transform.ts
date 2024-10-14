@@ -3,11 +3,13 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {ParseSourceFile} from '@angular/compiler';
-import * as ts from 'typescript';
+
+import {DeclarationNode} from '../../reflection';
+
 import {IndexedComponent} from './api';
 import {IndexingContext} from './context';
 import {getTemplateIdentifiers} from './template';
@@ -18,15 +20,15 @@ import {getTemplateIdentifiers} from './template';
  *
  * The context must be populated before `generateAnalysis` is called.
  */
-export function generateAnalysis(context: IndexingContext): Map<ts.Declaration, IndexedComponent> {
-  const analysis = new Map<ts.Declaration, IndexedComponent>();
+export function generateAnalysis(context: IndexingContext): Map<DeclarationNode, IndexedComponent> {
+  const analysis = new Map<DeclarationNode, IndexedComponent>();
 
   context.components.forEach(({declaration, selector, boundTemplate, templateMeta}) => {
     const name = declaration.name.getText();
 
-    const usedComponents = new Set<ts.Declaration>();
+    const usedComponents = new Set<DeclarationNode>();
     const usedDirs = boundTemplate.getUsedDirectives();
-    usedDirs.forEach(dir => {
+    usedDirs.forEach((dir) => {
       if (dir.isComponent) {
         usedComponents.add(dir.ref.node);
       }
@@ -35,7 +37,9 @@ export function generateAnalysis(context: IndexingContext): Map<ts.Declaration, 
     // Get source files for the component and the template. If the template is inline, its source
     // file is the component's.
     const componentFile = new ParseSourceFile(
-        declaration.getSourceFile().getFullText(), declaration.getSourceFile().fileName);
+      declaration.getSourceFile().getFullText(),
+      declaration.getSourceFile().fileName,
+    );
     let templateFile: ParseSourceFile;
     if (templateMeta.isInline) {
       templateFile = componentFile;
@@ -43,16 +47,18 @@ export function generateAnalysis(context: IndexingContext): Map<ts.Declaration, 
       templateFile = templateMeta.file;
     }
 
+    const {identifiers, errors} = getTemplateIdentifiers(boundTemplate);
     analysis.set(declaration, {
       name,
       selector,
       file: componentFile,
       template: {
-        identifiers: getTemplateIdentifiers(boundTemplate),
+        identifiers,
         usedComponents,
         isInline: templateMeta.isInline,
         file: templateFile,
       },
+      errors,
     });
   });
 

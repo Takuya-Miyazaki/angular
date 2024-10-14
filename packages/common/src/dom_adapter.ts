@@ -3,7 +3,7 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 let _DOM: DomAdapter = null!;
@@ -12,14 +12,8 @@ export function getDOM(): DomAdapter {
   return _DOM;
 }
 
-export function setDOM(adapter: DomAdapter) {
-  _DOM = adapter;
-}
-
 export function setRootDomAdapter(adapter: DomAdapter) {
-  if (!_DOM) {
-    _DOM = adapter;
-  }
+  _DOM ??= adapter;
 }
 
 /* tslint:disable:requireParameterType */
@@ -31,18 +25,13 @@ export function setRootDomAdapter(adapter: DomAdapter) {
  */
 export abstract class DomAdapter {
   // Needs Domino-friendly test utility
-  abstract getProperty(el: Element, name: string): any;
   abstract dispatchEvent(el: any, evt: any): any;
-
-  // Used by router
-  abstract log(error: any): any;
-  abstract logGroup(error: any): any;
-  abstract logGroupEnd(): any;
+  abstract readonly supportsDOMEvents: boolean;
 
   // Used by Meta
-  abstract remove(el: any): Node;
+  abstract remove(el: any): void;
   abstract createElement(tagName: any, doc?: any): HTMLElement;
-  abstract createHtmlDocument(): HTMLDocument;
+  abstract createHtmlDocument(): Document;
   abstract getDefaultDocument(): Document;
 
   // Used by By.css
@@ -53,25 +42,17 @@ export abstract class DomAdapter {
 
   // Used by KeyEventsPlugin
   abstract onAndCancel(el: any, evt: any, listener: any): Function;
-  abstract supportsDOMEvents(): boolean;
 
   // Used by PlatformLocation and ServerEventManagerPlugin
   abstract getGlobalEventTarget(doc: Document, target: string): any;
 
   // Used by PlatformLocation
-  abstract getHistory(): History;
-  abstract getLocation():
-      any; /** This is the ambient Location definition, NOT Location from @angular/common.  */
-  abstract getBaseHref(doc: Document): string|null;
+  abstract getBaseHref(doc: Document): string | null;
   abstract resetBaseElement(): void;
 
   // TODO: remove dependency in DefaultValueAccessor
   abstract getUserAgent(): string;
 
-  // Used by AngularProfiler
-  abstract performanceNow(): number;
-
-  // Used by CookieXSRFStrategy
-  abstract supportsCookies(): boolean;
-  abstract getCookie(name: string): string|null;
+  // Used in the legacy @angular/http package which has some usage in g3.
+  abstract getCookie(name: string): string | null;
 }

@@ -1,108 +1,195 @@
 workspace(
     name = "angular",
-    managed_directories = {"@npm": ["node_modules"]},
+    managed_directories = {
+        "@npm": ["node_modules"],
+    },
 )
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("//:yarn.bzl", "YARN_LABEL")
 
-# Fetch rules_nodejs so we can install our npm dependencies
 http_archive(
     name = "build_bazel_rules_nodejs",
-    sha256 = "84abf7ac4234a70924628baa9a73a5a5cbad944c4358cf9abdb4aab29c9a5b77",
-    urls = ["https://github.com/bazelbuild/rules_nodejs/releases/download/1.7.0/rules_nodejs-1.7.0.tar.gz"],
+    patches = [
+        "//tools/esm-interop:patches/bazel/nodejs_binary_esm_support.patch",
+    ],
+    sha256 = "5dd1e5dea1322174c57d3ca7b899da381d516220793d0adef3ba03b9d23baa8e",
+    urls = ["https://github.com/bazelbuild/rules_nodejs/releases/download/5.8.3/rules_nodejs-5.8.3.tar.gz"],
 )
 
-# Check the rules_nodejs version and download npm dependencies
-# Note: bazel (version 2 and after) will check the .bazelversion file so we don't need to
-# assert on that.
-load("@build_bazel_rules_nodejs//:index.bzl", "check_rules_nodejs_version", "node_repositories", "yarn_install")
+load("@build_bazel_rules_nodejs//:repositories.bzl", "build_bazel_rules_nodejs_dependencies")
 
-check_rules_nodejs_version(minimum_version_string = "1.7.0")
+build_bazel_rules_nodejs_dependencies()
 
-# Setup the Node.js toolchain
-node_repositories(
+# The PKG rules are needed to build tar packages for integration tests. The builtin
+# rule in `@bazel_tools` is not Windows compatible and outdated.
+# NOTE: We cannot move past version 0.6.0 as pkg_tar no longer works on directories, which rules_nodejs
+#       relies on for node_modules setup.
+http_archive(
+    name = "rules_pkg",
+    sha256 = "62eeb544ff1ef41d786e329e1536c1d541bb9bcad27ae984d57f18f314018e66",
+    urls = [
+        "https://mirror.bazel.build/github.com/bazelbuild/rules_pkg/releases/download/0.6.0/rules_pkg-0.6.0.tar.gz",
+        "https://github.com/bazelbuild/rules_pkg/releases/download/0.6.0/rules_pkg-0.6.0.tar.gz",
+    ],
+)
+
+# Fetch Aspect lib for utilities like write_source_files
+# NOTE: We cannot move past version 1.23.2 of aspect_bazel_lib because it requires us to move to bazel 6.0.0 which
+#       breaks our usage of managed_directories
+http_archive(
+    name = "aspect_bazel_lib",
+    sha256 = "4b2e774387bae6242879820086b7b738d49bf3d0659522ea5d9363be01a27582",
+    strip_prefix = "bazel-lib-1.23.2",
+    url = "https://github.com/aspect-build/bazel-lib/archive/refs/tags/v1.23.2.tar.gz",
+)
+
+# Setup the Node.js toolchain.
+load("@rules_nodejs//nodejs:repositories.bzl", "nodejs_register_toolchains")
+
+nodejs_register_toolchains(
+    name = "nodejs",
     node_repositories = {
-        "12.14.1-darwin_amd64": ("node-v12.14.1-darwin-x64.tar.gz", "node-v12.14.1-darwin-x64", "0be10a28737527a1e5e3784d3ad844d742fe8b0718acd701fd48f718fd3af78f"),
-        "12.14.1-linux_amd64": ("node-v12.14.1-linux-x64.tar.xz", "node-v12.14.1-linux-x64", "07cfcaa0aa9d0fcb6e99725408d9e0b07be03b844701588e3ab5dbc395b98e1b"),
-        "12.14.1-windows_amd64": ("node-v12.14.1-win-x64.zip", "node-v12.14.1-win-x64", "1f96ccce3ba045ecea3f458e189500adb90b8bc1a34de5d82fc10a5bf66ce7e3"),
+        "18.20.0-darwin_arm64": ("node-v18.20.0-darwin-arm64.tar.gz", "node-v18.20.0-darwin-arm64", "10066ad4dd9e03ea5c4c45ef8775420ff37b860de09bbdf87b97e0c07b1ea036"),
+        "18.20.0-darwin_amd64": ("node-v18.20.0-darwin-x64.tar.gz", "node-v18.20.0-darwin-x64", "062ba71618e88e06321de5caa038843c350aababa2d315f3ca7b8551f8e66c1c"),
+        "18.20.0-linux_arm64": ("node-v18.20.0-linux-arm64.tar.xz", "node-v18.20.0-linux-arm64", "afe51da9ffb38ac1e3a20d9a06efd403ced4bf8831ab554a02a088dd8392fd79"),
+        "18.20.0-linux_ppc64le": ("node-v18.20.0-linux-ppc64le.tar.xz", "node-v18.20.0-linux-ppc64le", "9e652bbf53a3e37285b11dfb9d6a9bb8b02010c3b50e5c8229d4cc10e72681da"),
+        "18.20.0-linux_s390x": ("node-v18.20.0-linux-s390x.tar.xz", "node-v18.20.0-linux-s390x", "a6c2a5796b9d9e9bf21da62ec89ff30b41a8108880b9eaa3c912f1ce795a7743"),
+        "18.20.0-linux_amd64": ("node-v18.20.0-linux-x64.tar.xz", "node-v18.20.0-linux-x64", "03eea148e56785babb27930b05ed6bf311aaa3bc573c0399dd63cad2fe5713c7"),
+        "18.20.0-windows_amd64": ("node-v18.20.0-win-x64.zip", "node-v18.20.0-win-x64", "1c0aab05cc6836a8f5148cca345b92ebc948a4a2013f18d117b7ade6ff05aca6"),
     },
-    node_version = "12.14.1",
-    package_json = ["//:package.json"],
+    # We need at least Node 18.17 due to some transitive dependencies.
+    node_version = "18.20.0",
 )
 
-load("//integration:angular_integration_test.bzl", "npm_package_archives")
+# Download npm dependencies.
+load("@build_bazel_rules_nodejs//:index.bzl", "yarn_install")
+load("//integration:npm_package_archives.bzl", "npm_package_archives")
 
 yarn_install(
     name = "npm",
+    # Note that we add the postinstall scripts here so that the dependencies are re-installed
+    # when the postinstall patches are modified.
+    data = [
+        YARN_LABEL,
+        "//:.yarnrc",
+        "//:tools/npm-patches/@bazel+jasmine+5.8.1.patch",
+        "//tools:postinstall-patches.js",
+        "//tools/esm-interop:patches/npm/@angular+build-tooling+0.0.0-d30a56c19bafaac67cf44e605ed8c2c0e45b0a51.patch",
+        "//tools/esm-interop:patches/npm/@bazel+concatjs+5.8.1.patch",
+        "//tools/esm-interop:patches/npm/@bazel+esbuild+5.7.1.patch",
+        "//tools/esm-interop:patches/npm/@bazel+protractor+5.7.1.patch",
+        "//tools/esm-interop:patches/npm/rxjs+6.6.7.patch",
+    ],
+    # Currently disabled due to:
+    #  1. Missing Windows support currently.
+    #  2. Incompatibilites with the `ts_library` rule.
+    exports_directories_only = False,
     manual_build_file_contents = npm_package_archives(),
     package_json = "//:package.json",
+    # We prefer to symlink the `node_modules` to only maintain a single install.
+    # See https://github.com/angular/dev-infra/pull/446#issuecomment-1059820287 for details.
+    symlink_node_modules = True,
+    yarn = YARN_LABEL,
     yarn_lock = "//:yarn.lock",
 )
 
-# Install all bazel dependencies of the @npm npm packages
-load("@npm//:install_bazel_dependencies.bzl", "install_bazel_dependencies")
+load("@aspect_bazel_lib//lib:repositories.bzl", "aspect_bazel_lib_dependencies")
 
-install_bazel_dependencies()
-
-# Load angular dependencies
-load("//packages/bazel:package.bzl", "rules_angular_dev_dependencies")
-
-rules_angular_dev_dependencies()
+aspect_bazel_lib_dependencies()
 
 # Load protractor dependencies
-load("@npm_bazel_protractor//:package.bzl", "npm_bazel_protractor_dependencies")
+load("@npm//@bazel/protractor:package.bzl", "npm_bazel_protractor_dependencies")
 
 npm_bazel_protractor_dependencies()
-
-# Load karma dependencies
-load("@npm_bazel_karma//:package.bzl", "npm_bazel_karma_dependencies")
-
-npm_bazel_karma_dependencies()
 
 # Setup the rules_webtesting toolchain
 load("@io_bazel_rules_webtesting//web:repositories.bzl", "web_test_repositories")
 
 web_test_repositories()
 
-load("//dev-infra/browsers:browser_repositories.bzl", "browser_repositories")
+load("@npm//@angular/build-tooling/bazel/browsers:browser_repositories.bzl", "browser_repositories")
 
 browser_repositories()
 
-# Setup the rules_typescript tooolchain
-load("@npm_bazel_typescript//:index.bzl", "ts_setup_workspace")
+load("@build_bazel_rules_nodejs//toolchains/esbuild:esbuild_repositories.bzl", "esbuild_repositories")
 
-ts_setup_workspace()
+esbuild_repositories(
+    npm_repository = "npm",
+)
+
+load("@rules_pkg//:deps.bzl", "rules_pkg_dependencies")
+
+rules_pkg_dependencies()
+
+load("//packages/common/locales/generate-locales-tool:cldr-data.bzl", "cldr_json_data_repository", "cldr_xml_data_repository")
+
+cldr_major_version = "41"
+
+cldr_json_data_repository(
+    name = "cldr_json_data",
+    urls = {
+        "https://github.com/unicode-org/cldr-json/releases/download/%s.0.0/cldr-%s.0.0-json-full.zip" % (cldr_major_version, cldr_major_version): "649b76647269e32b1b0a5f7b6eed52e9e63a1581f1afdcf4f6771e49c9713614",
+    },
+)
+
+cldr_xml_data_repository(
+    name = "cldr_xml_data",
+    urls = {
+        "https://github.com/unicode-org/cldr/releases/download/release-%s/cldr-common-%s.0.zip" % (cldr_major_version, cldr_major_version): "823c6170c41e2de2c229574e8a436332d25f1c9723409867fe721e00bc92d853",
+    },
+)
+
+# sass rules
+http_archive(
+    name = "io_bazel_rules_sass",
+    sha256 = "66bf8574a35946c084465cb6991d5de113edbf71fa8f5cf9edc3e48d7ad0a490",
+    strip_prefix = "rules_sass-583fc8cf693779f412c79dcad5019a50c0c419b9",
+    urls = [
+        "https://github.com/bazelbuild/rules_sass/archive/583fc8cf693779f412c79dcad5019a50c0c419b9.zip",
+    ],
+)
 
 # Setup the rules_sass toolchain
 load("@io_bazel_rules_sass//sass:sass_repositories.bzl", "sass_repositories")
 
-sass_repositories()
+sass_repositories(
+    yarn_script = YARN_LABEL,
+)
 
-# Setup the skydoc toolchain
-load("@io_bazel_skydoc//skylark:skylark.bzl", "skydoc_repositories")
+# Register git toolchains
+register_toolchains(
+    "@npm//@angular/build-tooling/bazel/git-toolchain:git_linux_toolchain",
+    "@npm//@angular/build-tooling/bazel/git-toolchain:git_macos_x86_toolchain",
+    "@npm//@angular/build-tooling/bazel/git-toolchain:git_macos_arm64_toolchain",
+    "@npm//@angular/build-tooling/bazel/git-toolchain:git_windows_toolchain",
+)
 
-skydoc_repositories()
+# Fetch sauce connect (tool to open Saucelabs tunnel for Saucelabs browser tests)
+http_archive(
+    name = "sauce_connect_linux_amd64",
+    build_file_content = """exports_files(["bin/sc"], visibility = ["//visibility:public"])""",
+    sha256 = "26b9c3630f441b47854b6032f7eca6f1d88d3f62e50ee44c27015d71a5155c36",
+    strip_prefix = "sc-4.8.2-linux",
+    url = "https://saucelabs.com/downloads/sc-4.8.2-linux.tar.gz",
+)
 
-load("@bazel_toolchains//rules:environments.bzl", "clang_env")
-load("@bazel_toolchains//rules:rbe_repo.bzl", "rbe_autoconfig")
+http_archive(
+    name = "sauce_connect_mac",
+    build_file_content = """exports_files(["bin/sc"], visibility = ["//visibility:public"])""",
+    sha256 = "28277ce81ef9ab84f5b87b526258920a8ead44789a5034346e872629bbf38089",
+    strip_prefix = "sc-4.8.2-osx",
+    url = "https://saucelabs.com/downloads/sc-4.8.2-osx.zip",
+)
 
-rbe_autoconfig(
-    name = "rbe_ubuntu1604_angular",
-    # Need to specify a base container digest in order to ensure that we can use the checked-in
-    # platform configurations for the "ubuntu16_04" image. Otherwise the autoconfig rule would
-    # need to pull the image and run it in order determine the toolchain configuration. See:
-    # https://github.com/bazelbuild/bazel-toolchains/blob/3.2.0/configs/ubuntu16_04_clang/versions.bzl
-    base_container_digest = "sha256:5e750dd878df9fcf4e185c6f52b9826090f6e532b097f286913a428290622332",
-    # Note that if you change the `digest`, you might also need to update the
-    # `base_container_digest` to make sure marketplace.gcr.io/google/rbe-ubuntu16-04-webtest:<digest>
-    # and marketplace.gcr.io/google/rbe-ubuntu16-04:<base_container_digest> have
-    # the same Clang and JDK installed. Clang is needed because of the dependency on
-    # @com_google_protobuf. Java is needed for the Bazel's test executor Java tool.
-    digest = "sha256:f743114235a43355bf8324e2ba0fa6a597236fe06f7bc99aaa9ac703631c306b",
-    env = clang_env(),
-    registry = "marketplace.gcr.io",
-    # We can't use the default "ubuntu16_04" RBE image provided by the autoconfig because we need
-    # a specific Linux kernel that comes with "libx11" in order to run headless browser tests.
-    repository = "google/rbe-ubuntu16-04-webtest",
-    use_checked_in_confs = "Force",
+yarn_install(
+    name = "npm_ts_versions",
+    data = [
+        YARN_LABEL,
+        "//:.yarnrc",
+    ],
+    exports_directories_only = False,
+    package_json = "//packages/core/schematics/migrations/signal-migration/test/ts-versions:package.json",
+    yarn = YARN_LABEL,
+    yarn_lock = "//packages/core/schematics/migrations/signal-migration/test/ts-versions:yarn.lock",
 )

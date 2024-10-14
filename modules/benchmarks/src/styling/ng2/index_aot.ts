@@ -3,14 +3,14 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {enableProdMode} from '@angular/core';
 import {platformBrowser} from '@angular/platform-browser';
 
 import {init} from './init';
-import {StylingModuleNgFactory} from './styling.ngfactory';
+import {StylingModule} from './styling';
 
 enableProdMode();
-platformBrowser().bootstrapModuleFactory(StylingModuleNgFactory).then(init);
+platformBrowser().bootstrapModule(StylingModule).then(init);

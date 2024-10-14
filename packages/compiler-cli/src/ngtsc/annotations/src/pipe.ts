@@ -3,41 +3,109 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {compilePipeFromMetadata, Identifiers, R3FactoryTarget, R3PipeMetadata, Statement, WrappedNodeExpr} from '@angular/compiler';
-import * as ts from 'typescript';
+import {
+  compileClassMetadata,
+  compileDeclareClassMetadata,
+  compileDeclarePipeFromMetadata,
+  compilePipeFromMetadata,
+  FactoryTarget,
+  R3ClassMetadata,
+  R3PipeMetadata,
+  WrappedNodeExpr,
+} from '@angular/compiler';
+import ts from 'typescript';
 
 import {ErrorCode, FatalDiagnosticError} from '../../diagnostics';
-import {DefaultImportRecorder, Reference} from '../../imports';
-import {InjectableClassRegistry, MetadataRegistry} from '../../metadata';
+import {Reference} from '../../imports';
+import {SemanticSymbol} from '../../incremental/semantic_graph';
+import {MetadataRegistry, MetaKind} from '../../metadata';
 import {PartialEvaluator} from '../../partial_evaluator';
+import {PerfEvent, PerfRecorder} from '../../perf';
 import {ClassDeclaration, Decorator, ReflectionHost, reflectObjectLiteral} from '../../reflection';
 import {LocalModuleScopeRegistry} from '../../scope';
-import {AnalysisOutput, CompileResult, DecoratorHandler, DetectResult, HandlerPrecedence, ResolveResult} from '../../transform';
-import {createValueHasWrongTypeError} from './diagnostics';
-
-import {compileNgFactoryDefField} from './factory';
-import {generateSetClassMetadataCall} from './metadata';
-import {findAngularDecorator, getValidConstructorDependencies, makeDuplicateDeclarationError, unwrapExpression, wrapTypeReference} from './util';
+import {
+  AnalysisOutput,
+  CompilationMode,
+  CompileResult,
+  DecoratorHandler,
+  DetectResult,
+  HandlerPrecedence,
+  ResolveResult,
+} from '../../transform';
+import {
+  compileDeclareFactory,
+  compileNgFactoryDefField,
+  compileResults,
+  createValueHasWrongTypeError,
+  extractClassMetadata,
+  findAngularDecorator,
+  getValidConstructorDependencies,
+  InjectableClassRegistry,
+  makeDuplicateDeclarationError,
+  toFactoryMetadata,
+  unwrapExpression,
+  wrapTypeReference,
+} from '../common';
+import {NG_STANDALONE_DEFAULT_VALUE} from '../common/src/standalone-default-value';
 
 export interface PipeHandlerData {
   meta: R3PipeMetadata;
-  metadataStmt: Statement|null;
+  classMetadata: R3ClassMetadata | null;
+  pipeNameExpr: ts.Expression;
+  decorator: ts.Decorator | null;
 }
 
-export class PipeDecoratorHandler implements DecoratorHandler<Decorator, PipeHandlerData, unknown> {
+/**
+ * Represents an Angular pipe.
+ */
+export class PipeSymbol extends SemanticSymbol {
   constructor(
-      private reflector: ReflectionHost, private evaluator: PartialEvaluator,
-      private metaRegistry: MetadataRegistry, private scopeRegistry: LocalModuleScopeRegistry,
-      private defaultImportRecorder: DefaultImportRecorder,
-      private injectableRegistry: InjectableClassRegistry, private isCore: boolean) {}
+    decl: ClassDeclaration,
+    public readonly name: string,
+  ) {
+    super(decl);
+  }
+
+  override isPublicApiAffected(previousSymbol: SemanticSymbol): boolean {
+    if (!(previousSymbol instanceof PipeSymbol)) {
+      return true;
+    }
+
+    return this.name !== previousSymbol.name;
+  }
+
+  override isTypeCheckApiAffected(previousSymbol: SemanticSymbol): boolean {
+    return this.isPublicApiAffected(previousSymbol);
+  }
+}
+
+export class PipeDecoratorHandler
+  implements DecoratorHandler<Decorator, PipeHandlerData, PipeSymbol, unknown>
+{
+  constructor(
+    private reflector: ReflectionHost,
+    private evaluator: PartialEvaluator,
+    private metaRegistry: MetadataRegistry,
+    private scopeRegistry: LocalModuleScopeRegistry,
+    private injectableRegistry: InjectableClassRegistry,
+    private isCore: boolean,
+    private perf: PerfRecorder,
+    private includeClassMetadata: boolean,
+    private readonly compilationMode: CompilationMode,
+    private readonly generateExtraImportsInLocalMode: boolean,
+    private readonly strictStandalone: boolean,
+  ) {}
 
   readonly precedence = HandlerPrecedence.PRIMARY;
-  readonly name = PipeDecoratorHandler.name;
+  readonly name = 'PipeDecoratorHandler';
 
-  detect(node: ClassDeclaration, decorators: Decorator[]|null): DetectResult<Decorator>|undefined {
+  detect(
+    node: ClassDeclaration,
+    decorators: Decorator[] | null,
+  ): DetectResult<Decorator> | undefined {
     if (!decorators) {
       return undefined;
     }
@@ -53,32 +121,45 @@ export class PipeDecoratorHandler implements DecoratorHandler<Decorator, PipeHan
     }
   }
 
-  analyze(clazz: ClassDeclaration, decorator: Readonly<Decorator>):
-      AnalysisOutput<PipeHandlerData> {
+  analyze(
+    clazz: ClassDeclaration,
+    decorator: Readonly<Decorator>,
+  ): AnalysisOutput<PipeHandlerData> {
+    this.perf.eventCount(PerfEvent.AnalyzePipe);
+
     const name = clazz.name.text;
     const type = wrapTypeReference(this.reflector, clazz);
-    const internalType = new WrappedNodeExpr(this.reflector.getInternalNameOfClass(clazz));
 
     if (decorator.args === null) {
       throw new FatalDiagnosticError(
-          ErrorCode.DECORATOR_NOT_CALLED, Decorator.nodeForError(decorator),
-          `@Pipe must be called`);
+        ErrorCode.DECORATOR_NOT_CALLED,
+        decorator.node,
+        `@Pipe must be called`,
+      );
     }
     if (decorator.args.length !== 1) {
       throw new FatalDiagnosticError(
-          ErrorCode.DECORATOR_ARITY_WRONG, Decorator.nodeForError(decorator),
-          '@Pipe must have exactly one argument');
+        ErrorCode.DECORATOR_ARITY_WRONG,
+        decorator.node,
+        '@Pipe must have exactly one argument',
+      );
     }
     const meta = unwrapExpression(decorator.args[0]);
     if (!ts.isObjectLiteralExpression(meta)) {
       throw new FatalDiagnosticError(
-          ErrorCode.DECORATOR_ARG_NOT_LITERAL, meta, '@Pipe must have a literal argument');
+        ErrorCode.DECORATOR_ARG_NOT_LITERAL,
+        meta,
+        '@Pipe must have a literal argument',
+      );
     }
     const pipe = reflectObjectLiteral(meta);
 
     if (!pipe.has('name')) {
       throw new FatalDiagnosticError(
-          ErrorCode.PIPE_MISSING_NAME, meta, `@Pipe decorator is missing name field`);
+        ErrorCode.PIPE_MISSING_NAME,
+        meta,
+        `@Pipe decorator is missing name field`,
+      );
     }
     const pipeNameExpr = pipe.get('name')!;
     const pipeName = this.evaluator.evaluate(pipeNameExpr);
@@ -96,32 +177,70 @@ export class PipeDecoratorHandler implements DecoratorHandler<Decorator, PipeHan
       pure = pureValue;
     }
 
+    let isStandalone = NG_STANDALONE_DEFAULT_VALUE;
+    if (pipe.has('standalone')) {
+      const expr = pipe.get('standalone')!;
+      const resolved = this.evaluator.evaluate(expr);
+      if (typeof resolved !== 'boolean') {
+        throw createValueHasWrongTypeError(expr, resolved, `standalone flag must be a boolean`);
+      }
+      isStandalone = resolved;
+
+      if (!isStandalone && this.strictStandalone) {
+        throw new FatalDiagnosticError(
+          ErrorCode.NON_STANDALONE_NOT_ALLOWED,
+          expr,
+          `Only standalone pipes are allowed when 'strictStandalone' is enabled.`,
+        );
+      }
+    }
+
     return {
       analysis: {
         meta: {
           name,
           type,
-          internalType,
           typeArgumentCount: this.reflector.getGenericArityOfClass(clazz) || 0,
           pipeName,
-          deps: getValidConstructorDependencies(
-              clazz, this.reflector, this.defaultImportRecorder, this.isCore),
+          deps: getValidConstructorDependencies(clazz, this.reflector, this.isCore),
           pure,
+          isStandalone,
         },
-        metadataStmt: generateSetClassMetadataCall(
-            clazz, this.reflector, this.defaultImportRecorder, this.isCore),
+        classMetadata: this.includeClassMetadata
+          ? extractClassMetadata(clazz, this.reflector, this.isCore)
+          : null,
+        pipeNameExpr,
+        decorator: (decorator?.node as ts.Decorator | null) ?? null,
       },
     };
   }
 
+  symbol(node: ClassDeclaration, analysis: Readonly<PipeHandlerData>): PipeSymbol {
+    return new PipeSymbol(node, analysis.meta.pipeName);
+  }
+
   register(node: ClassDeclaration, analysis: Readonly<PipeHandlerData>): void {
     const ref = new Reference(node);
-    this.metaRegistry.registerPipeMetadata({ref, name: analysis.meta.pipeName});
+    this.metaRegistry.registerPipeMetadata({
+      kind: MetaKind.Pipe,
+      ref,
+      name: analysis.meta.pipeName,
+      nameExpr: analysis.pipeNameExpr,
+      isStandalone: analysis.meta.isStandalone,
+      decorator: analysis.decorator,
+      isExplicitlyDeferred: false,
+    });
 
-    this.injectableRegistry.registerInjectable(node);
+    this.injectableRegistry.registerInjectable(node, {
+      ctorDeps: analysis.meta.deps,
+    });
   }
 
   resolve(node: ClassDeclaration): ResolveResult<unknown> {
+    if (this.compilationMode === CompilationMode.LOCAL) {
+      return {};
+    }
+
     const duplicateDeclData = this.scopeRegistry.getDuplicateDeclarations(node);
     if (duplicateDeclData !== null) {
       // This pipe was declared twice (or more).
@@ -133,24 +252,33 @@ export class PipeDecoratorHandler implements DecoratorHandler<Decorator, PipeHan
     return {};
   }
 
-  compile(node: ClassDeclaration, analysis: Readonly<PipeHandlerData>): CompileResult[] {
-    const meta = analysis.meta;
-    const res = compilePipeFromMetadata(meta);
-    const factoryRes = compileNgFactoryDefField({
-      ...meta,
-      injectFn: Identifiers.directiveInject,
-      target: R3FactoryTarget.Pipe,
-    });
-    if (analysis.metadataStmt !== null) {
-      factoryRes.statements.push(analysis.metadataStmt);
-    }
-    return [
-      factoryRes, {
-        name: 'ɵpipe',
-        initializer: res.expression,
-        statements: [],
-        type: res.type,
-      }
-    ];
+  compileFull(node: ClassDeclaration, analysis: Readonly<PipeHandlerData>): CompileResult[] {
+    const fac = compileNgFactoryDefField(toFactoryMetadata(analysis.meta, FactoryTarget.Pipe));
+    const def = compilePipeFromMetadata(analysis.meta);
+    const classMetadata =
+      analysis.classMetadata !== null
+        ? compileClassMetadata(analysis.classMetadata).toStmt()
+        : null;
+    return compileResults(fac, def, classMetadata, 'ɵpipe', null, null /* deferrableImports */);
+  }
+
+  compilePartial(node: ClassDeclaration, analysis: Readonly<PipeHandlerData>): CompileResult[] {
+    const fac = compileDeclareFactory(toFactoryMetadata(analysis.meta, FactoryTarget.Pipe));
+    const def = compileDeclarePipeFromMetadata(analysis.meta);
+    const classMetadata =
+      analysis.classMetadata !== null
+        ? compileDeclareClassMetadata(analysis.classMetadata).toStmt()
+        : null;
+    return compileResults(fac, def, classMetadata, 'ɵpipe', null, null /* deferrableImports */);
+  }
+
+  compileLocal(node: ClassDeclaration, analysis: Readonly<PipeHandlerData>): CompileResult[] {
+    const fac = compileNgFactoryDefField(toFactoryMetadata(analysis.meta, FactoryTarget.Pipe));
+    const def = compilePipeFromMetadata(analysis.meta);
+    const classMetadata =
+      analysis.classMetadata !== null
+        ? compileClassMetadata(analysis.classMetadata).toStmt()
+        : null;
+    return compileResults(fac, def, classMetadata, 'ɵpipe', null, null /* deferrableImports */);
   }
 }

@@ -3,25 +3,25 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {Injectable} from '@angular/core';
 
 @Injectable()
-export class Log {
-  logItems: any[];
+export class Log<T = string> {
+  logItems: T[];
 
   constructor() {
     this.logItems = [];
   }
 
-  add(value: any /** TODO #9100 */): void {
+  add(value: T): void {
     this.logItems.push(value);
   }
 
-  fn(value: any /** TODO #9100 */) {
-    return (a1: any = null, a2: any = null, a3: any = null, a4: any = null, a5: any = null) => {
+  fn(value: T) {
+    return () => {
       this.logItems.push(value);
     };
   }

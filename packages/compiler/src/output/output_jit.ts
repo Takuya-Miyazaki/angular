@@ -3,15 +3,19 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {identifierName} from '../compile_metadata';
-import {CompileReflector} from '../compile_reflector';
+import {identifierName} from '../parse_util';
 
 import {EmitterVisitorContext} from './abstract_emitter';
 import {AbstractJsEmitterVisitor} from './abstract_js_emitter';
 import * as o from './output_ast';
+import {newTrustedFunctionForJIT} from './output_jit_trusted_types';
+
+export interface ExternalReferenceResolver {
+  resolveExternalReference(ref: o.ExternalReference): unknown;
+}
 
 /**
  * A helper class to manage the evaluation of JIT generated code.
@@ -21,22 +25,22 @@ export class JitEvaluator {
    *
    * @param sourceUrl The URL of the generated code.
    * @param statements An array of Angular statement AST nodes to be evaluated.
-   * @param reflector A helper used when converting the statements to executable code.
+   * @param refResolver Resolves `o.ExternalReference`s into values.
    * @param createSourceMaps If true then create a source-map for the generated code and include it
    * inline as a source-map comment.
    * @returns A map of all the variables in the generated code.
    */
   evaluateStatements(
-      sourceUrl: string, statements: o.Statement[], reflector: CompileReflector,
-      createSourceMaps: boolean): {[key: string]: any} {
-    const converter = new JitEmitterVisitor(reflector);
+    sourceUrl: string,
+    statements: o.Statement[],
+    refResolver: ExternalReferenceResolver,
+    createSourceMaps: boolean,
+  ): {[key: string]: any} {
+    const converter = new JitEmitterVisitor(refResolver);
     const ctx = EmitterVisitorContext.createRoot();
     // Ensure generated code is in strict mode
     if (statements.length > 0 && !isUseStrictStatement(statements[0])) {
-      statements = [
-        o.literal('use strict').toStmt(),
-        ...statements,
-      ];
+      statements = [o.literal('use strict').toStmt(), ...statements];
     }
     converter.visitAllStatements(statements, ctx);
     converter.createReturnStmt(ctx);
@@ -54,8 +58,11 @@ export class JitEvaluator {
    * @returns The result of evaluating the code.
    */
   evaluateCode(
-      sourceUrl: string, ctx: EmitterVisitorContext, vars: {[key: string]: any},
-      createSourceMap: boolean): any {
+    sourceUrl: string,
+    ctx: EmitterVisitorContext,
+    vars: {[key: string]: any},
+    createSourceMap: boolean,
+  ): any {
     let fnBody = `"use strict";${ctx.toSource()}\n//# sourceURL=${sourceUrl}`;
     const fnArgNames: string[] = [];
     const fnArgValues: any[] = [];
@@ -69,11 +76,11 @@ export class JitEvaluator {
       // function anonymous(a,b,c
       // /**/) { ... }```
       // We don't want to hard code this fact, so we auto detect it via an empty function first.
-      const emptyFn = new Function(...fnArgNames.concat('return null;')).toString();
+      const emptyFn = newTrustedFunctionForJIT(...fnArgNames.concat('return null;')).toString();
       const headerLines = emptyFn.slice(0, emptyFn.indexOf('return null;')).split('\n').length - 1;
       fnBody += `\n${ctx.toSourceMapGenerator(sourceUrl, headerLines).toJsComment()}`;
     }
-    const fn = new Function(...fnArgNames.concat(fnBody));
+    const fn = newTrustedFunctionForJIT(...fnArgNames.concat(fnBody));
     return this.executeFunction(fn, fnArgValues);
   }
 
@@ -100,13 +107,18 @@ export class JitEmitterVisitor extends AbstractJsEmitterVisitor {
   private _evalArgValues: any[] = [];
   private _evalExportedVars: string[] = [];
 
-  constructor(private reflector: CompileReflector) {
+  constructor(private refResolver: ExternalReferenceResolver) {
     super();
   }
 
   createReturnStmt(ctx: EmitterVisitorContext) {
-    const stmt = new o.ReturnStatement(new o.LiteralMapExpr(this._evalExportedVars.map(
-        resultVar => new o.LiteralMapEntry(resultVar, o.variable(resultVar), false))));
+    const stmt = new o.ReturnStatement(
+      new o.LiteralMapExpr(
+        this._evalExportedVars.map(
+          (resultVar) => new o.LiteralMapEntry(resultVar, o.variable(resultVar), false),
+        ),
+      ),
+    );
     stmt.visitStatement(this, ctx);
   }
 
@@ -118,39 +130,35 @@ export class JitEmitterVisitor extends AbstractJsEmitterVisitor {
     return result;
   }
 
-  visitExternalExpr(ast: o.ExternalExpr, ctx: EmitterVisitorContext): any {
-    this._emitReferenceToExternal(ast, this.reflector.resolveExternalReference(ast.value), ctx);
+  override visitExternalExpr(ast: o.ExternalExpr, ctx: EmitterVisitorContext): any {
+    this._emitReferenceToExternal(ast, this.refResolver.resolveExternalReference(ast.value), ctx);
     return null;
   }
 
-  visitWrappedNodeExpr(ast: o.WrappedNodeExpr<any>, ctx: EmitterVisitorContext): any {
+  override visitWrappedNodeExpr(ast: o.WrappedNodeExpr<any>, ctx: EmitterVisitorContext): any {
     this._emitReferenceToExternal(ast, ast.node, ctx);
     return null;
   }
 
-  visitDeclareVarStmt(stmt: o.DeclareVarStmt, ctx: EmitterVisitorContext): any {
+  override visitDeclareVarStmt(stmt: o.DeclareVarStmt, ctx: EmitterVisitorContext): any {
     if (stmt.hasModifier(o.StmtModifier.Exported)) {
       this._evalExportedVars.push(stmt.name);
     }
     return super.visitDeclareVarStmt(stmt, ctx);
   }
 
-  visitDeclareFunctionStmt(stmt: o.DeclareFunctionStmt, ctx: EmitterVisitorContext): any {
+  override visitDeclareFunctionStmt(stmt: o.DeclareFunctionStmt, ctx: EmitterVisitorContext): any {
     if (stmt.hasModifier(o.StmtModifier.Exported)) {
       this._evalExportedVars.push(stmt.name);
     }
     return super.visitDeclareFunctionStmt(stmt, ctx);
   }
 
-  visitDeclareClassStmt(stmt: o.ClassStmt, ctx: EmitterVisitorContext): any {
-    if (stmt.hasModifier(o.StmtModifier.Exported)) {
-      this._evalExportedVars.push(stmt.name);
-    }
-    return super.visitDeclareClassStmt(stmt, ctx);
-  }
-
-  private _emitReferenceToExternal(ast: o.Expression, value: any, ctx: EmitterVisitorContext):
-      void {
+  private _emitReferenceToExternal(
+    ast: o.Expression,
+    value: any,
+    ctx: EmitterVisitorContext,
+  ): void {
     let id = this._evalArgValues.indexOf(value);
     if (id === -1) {
       id = this._evalArgValues.length;
@@ -161,7 +169,6 @@ export class JitEmitterVisitor extends AbstractJsEmitterVisitor {
     ctx.print(ast, this._evalArgNames[id]);
   }
 }
-
 
 function isUseStrictStatement(statement: o.Statement): boolean {
   return statement.isEquivalent(o.literal('use strict').toStmt());

@@ -11,6 +11,7 @@ ts_library(
     ],
     visibility = [
         ":__subpackages__",
+        "//packages/compiler-cli/src/ngtsc/transform/jit/test:__pkg__",
         "//packages/language-service/test:__subpackages__",
     ],
     deps = [
@@ -18,7 +19,7 @@ ts_library(
         "//packages/compiler",
         "//packages/compiler-cli",
         "//packages/compiler-cli/src/ngtsc/file_system",
-        "//packages/compiler-cli/test/helpers",
+        "//packages/compiler-cli/src/ngtsc/testing",
         "@npm//typescript",
     ],
 )
@@ -40,59 +41,15 @@ ts_library(
 
 jasmine_node_test(
     name = "extract_i18n",
-    bootstrap = ["//tools/testing:node_es5"],
+    bootstrap = ["//tools/testing:node"],
     data = [
         "//packages/core:npm_package",
-    ],
-    tags = [
-        # Disabled as the tests pertain to the old extraction tool only, whereas the Ivy extraction
-        # tool will likely work differently.
-        "no-ivy-aot",
     ],
     deps = [
         ":extract_i18n_lib",
         "//packages/common:npm_package",
         "//packages/core",
-        "@npm//minimist",
-    ],
-)
-
-# ngc_spec
-ts_library(
-    name = "ngc_lib",
-    testonly = True,
-    srcs = [
-        "ngc_spec.ts",
-    ],
-    deps = [
-        ":test_utils",
-        "//packages/compiler",
-        "//packages/compiler-cli",
-        "@npm//typescript",
-    ],
-)
-
-jasmine_node_test(
-    name = "ngc",
-    timeout = "long",  # 900 seconds
-    bootstrap = ["//tools/testing:node_es5"],
-    data = [
-        "//packages/common:npm_package",
-        "//packages/core:npm_package",
-        "//packages/platform-browser:npm_package",
-        "//packages/router:npm_package",
-    ],
-    tags = [
-        # Disabled as these tests are specific to the old ngc compiler, and not ngtsc which has its
-        # own tests under //packages/compiler-cli/test/ngtsc.
-        "no-ivy-aot",
-    ],
-    deps = [
-        ":ngc_lib",
-        "//packages/core",
-        "@npm//minimist",
-        "@npm//rxjs",
-        "@npm//tsickle",
+        "@npm//yargs",
     ],
 )
 
@@ -114,7 +71,7 @@ ts_library(
 
 jasmine_node_test(
     name = "perform_watch",
-    bootstrap = ["//tools/testing:node_es5"],
+    bootstrap = ["//tools/testing:node"],
     data = [
         "//packages/core:npm_package",
     ],
@@ -135,17 +92,55 @@ ts_library(
         ":test_utils",
         "//packages/compiler",
         "//packages/compiler-cli",
+        "@npm//typescript",
     ],
 )
 
 jasmine_node_test(
     name = "perform_compile",
-    bootstrap = ["//tools/testing:node_es5"],
+    bootstrap = ["//tools/testing:node"],
     data = [
         "//packages/core:npm_package",
     ],
     deps = [
         ":perform_compile_lib",
         "//packages/core",
+    ],
+)
+
+ts_library(
+    name = "typescript_support_lib",
+    testonly = True,
+    srcs = [
+        "typescript_support_spec.ts",
+    ],
+    deps = [
+        "//packages/compiler-cli",
+    ],
+)
+
+jasmine_node_test(
+    name = "typescript_support",
+    bootstrap = ["//tools/testing:node"],
+    deps = [
+        ":typescript_support_lib",
+    ],
+)
+
+# version_helpers_spec
+ts_library(
+    name = "version_helpers_lib",
+    testonly = True,
+    srcs = ["version_helpers_spec.ts"],
+    deps = [
+        "//packages/compiler-cli",
+    ],
+)
+
+jasmine_node_test(
+    name = "version_helpers",
+    bootstrap = ["//tools/testing:node"],
+    deps = [
+        ":version_helpers_lib",
     ],
 )

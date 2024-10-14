@@ -3,9 +3,10 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
+import {runfiles} from '@bazel/runfiles';
 import * as path from 'path';
 
 const EXT = /(\.ts|\.d\.ts|\.js|\.jsx|\.tsx)$/;
@@ -35,14 +36,10 @@ export function createTsConfig(options: TsConfigOptions) {
       ...result.compilerOptions,
       'outDir': options.outDir,
       'rootDir': options.rootDir,
-      'rootDirs': [
-        options.rootDir,
-      ],
+      'rootDirs': [options.rootDir],
       'baseUrl': options.rootDir,
       'paths': {
-        '*': [
-          './*',
-        ],
+        '*': ['./*'],
         ...options.pathMapping,
       },
       // we have to set this as the default tsconfig is made of es6 mode
@@ -61,6 +58,7 @@ export function createTsConfig(options: TsConfigOptions) {
       'target': options.target,
       // we have to set this as the default tsconfig is made of es6 mode
       'es5Mode': true,
+      'devmode': true,
       'manifest': createManifestPath(options),
       'compilationTargetSrc': options.compilationTargetSrc,
       // Override this property from the real tsconfig we read
@@ -69,37 +67,38 @@ export function createTsConfig(options: TsConfigOptions) {
       'tsickleExternsPath': '',
       // we don't copy the node_modules into our tmp dir, so we should look in
       // the original workspace directory for it
-      'nodeModulesPrefix':
-          path.join(require.resolve('npm/node_modules/typescript/package.json'), '../../'),
+      'nodeModulesPrefix': path.join(
+        runfiles.resolve('npm/node_modules/typescript/package.json'),
+        '../../',
+      ),
     },
     'files': options.files,
     'angularCompilerOptions': {
       ...result.angularCompilerOptions,
       'expectedOut': [
-        ...options.compilationTargetSrc.map(src => srcToExpectedOut(src, 'js', options)),
-        ...options.compilationTargetSrc.map(src => srcToExpectedOut(src, 'd.ts', options)),
-        ...options.compilationTargetSrc.map(src => srcToExpectedOut(src, 'ngfactory.js', options)),
-        ...options.compilationTargetSrc.map(
-            src => srcToExpectedOut(src, 'ngfactory.d.ts', options)),
-        ...options.compilationTargetSrc.map(src => srcToExpectedOut(src, 'ngsummary.js', options)),
-        ...options.compilationTargetSrc.map(
-            src => srcToExpectedOut(src, 'ngsummary.d.ts', options)),
-        ...options.compilationTargetSrc.map(
-            src => srcToExpectedOut(src, 'ngsummary.json', options)),
-      ]
-    }
+        ...options.compilationTargetSrc.map((src) => srcToExpectedOut(src, 'js', options)),
+        ...options.compilationTargetSrc.map((src) => srcToExpectedOut(src, 'd.ts', options)),
+      ],
+    },
   };
 }
 
 function srcToExpectedOut(srcFile: string, suffix: string, options: TsConfigOptions): string {
   const baseName = path.basename(srcFile).replace(EXT, '');
-  return path.join(
-             path.relative(options.rootDir, options.outDir),
-             path.relative(options.rootDir, path.dirname(srcFile)), baseName) +
-      '.' + suffix;
+  return (
+    path.join(
+      path.relative(options.rootDir, options.outDir),
+      path.relative(options.rootDir, path.dirname(srcFile)),
+      baseName,
+    ) +
+    '.' +
+    suffix
+  );
 }
 
 function createManifestPath(options: TsConfigOptions): string {
-  return path.resolve(options.outDir, options.target.replace(/\/\/|@/g, '').replace(/:/g, '/')) +
-      '.es5.MF';
+  return (
+    path.resolve(options.outDir, options.target.replace(/\/\/|@/g, '').replace(/:/g, '/')) +
+    '.es5.MF'
+  );
 }

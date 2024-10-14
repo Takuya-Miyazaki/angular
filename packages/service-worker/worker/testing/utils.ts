@@ -3,11 +3,19 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {NormalizedUrl} from '../src/api';
 
+/**
+ * Determine whether the current environment provides all necessary APIs to run ServiceWorker tests.
+ *
+ * @return Whether ServiceWorker tests can be run in the current environment.
+ */
+export function envIsSupported(): boolean {
+  return typeof URL === 'function';
+}
 
 /**
  * Get a normalized representation of a URL relative to a provided base URL.
@@ -26,17 +34,17 @@ export function normalizeUrl(url: string, relativeTo: string): NormalizedUrl {
   const {origin, path, search} = parseUrl(url, relativeTo);
   const {origin: relativeToOrigin} = parseUrl(relativeTo);
 
-  return ((origin === relativeToOrigin) ? path + search : url) as NormalizedUrl;
+  return (origin === relativeToOrigin ? path + search : url) as NormalizedUrl;
 }
 
 /**
  * Parse a URL into its different parts, such as `origin`, `path` and `search`.
  */
 export function parseUrl(
-    url: string, relativeTo?: string): {origin: string, path: string, search: string} {
-  const parsedUrl: URL = (typeof URL === 'function') ?
-      (!relativeTo ? new URL(url) : new URL(url, relativeTo)) :
-      require('url').parse(require('url').resolve(relativeTo || '', url));
+  url: string,
+  relativeTo?: string,
+): {origin: string; path: string; search: string} {
+  const parsedUrl: URL = !relativeTo ? new URL(url) : new URL(url, relativeTo);
 
   return {
     origin: parsedUrl.origin || `${parsedUrl.protocol}//${parsedUrl.host}`,

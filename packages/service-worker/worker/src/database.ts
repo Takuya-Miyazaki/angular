@@ -3,13 +3,18 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 /**
  * An abstract table, with the ability to read/write objects stored under keys.
  */
 export interface Table {
+  /**
+   * The name of this table in the database.
+   */
+  name: string;
+
   /**
    * Delete a key from the table.
    */
@@ -56,5 +61,8 @@ export interface Database {
  * An error returned in rejected promises if the given key is not found in the table.
  */
 export class NotFound {
-  constructor(public table: string, public key: string) {}
+  constructor(
+    public table: string,
+    public key: string,
+  ) {}
 }

@@ -3,15 +3,14 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {Inject, Injectable, Optional} from '@angular/core';
+import {Inject, Injectable, OnDestroy, Optional} from '@angular/core';
+
 import {APP_BASE_HREF, LocationStrategy} from './location_strategy';
 import {LocationChangeListener, PlatformLocation} from './platform_location';
 import {joinWithSlash, normalizeQueryParams} from './util';
-
-
 
 /**
  * @description
@@ -32,49 +31,60 @@ import {joinWithSlash, normalizeQueryParams} from './util';
  * @publicApi
  */
 @Injectable()
-export class HashLocationStrategy extends LocationStrategy {
+export class HashLocationStrategy extends LocationStrategy implements OnDestroy {
   private _baseHref: string = '';
+  private _removeListenerFns: (() => void)[] = [];
+
   constructor(
-      private _platformLocation: PlatformLocation,
-      @Optional() @Inject(APP_BASE_HREF) _baseHref?: string) {
+    private _platformLocation: PlatformLocation,
+    @Optional() @Inject(APP_BASE_HREF) _baseHref?: string,
+  ) {
     super();
     if (_baseHref != null) {
       this._baseHref = _baseHref;
     }
   }
 
-  onPopState(fn: LocationChangeListener): void {
-    this._platformLocation.onPopState(fn);
-    this._platformLocation.onHashChange(fn);
+  /** @nodoc */
+  ngOnDestroy(): void {
+    while (this._removeListenerFns.length) {
+      this._removeListenerFns.pop()!();
+    }
   }
 
-  getBaseHref(): string {
+  override onPopState(fn: LocationChangeListener): void {
+    this._removeListenerFns.push(
+      this._platformLocation.onPopState(fn),
+      this._platformLocation.onHashChange(fn),
+    );
+  }
+
+  override getBaseHref(): string {
     return this._baseHref;
   }
 
-  path(includeHash: boolean = false): string {
+  override path(includeHash: boolean = false): string {
     // the hash value is always prefixed with a `#`
     // and if it is empty then it will stay empty
-    let path = this._platformLocation.hash;
-    if (path == null) path = '#';
+    const path = this._platformLocation.hash ?? '#';
 
     return path.length > 0 ? path.substring(1) : path;
   }
 
-  prepareExternalUrl(internal: string): string {
+  override prepareExternalUrl(internal: string): string {
     const url = joinWithSlash(this._baseHref, internal);
-    return url.length > 0 ? ('#' + url) : url;
+    return url.length > 0 ? '#' + url : url;
   }
 
-  pushState(state: any, title: string, path: string, queryParams: string) {
-    let url: string|null = this.prepareExternalUrl(path + normalizeQueryParams(queryParams));
+  override pushState(state: any, title: string, path: string, queryParams: string) {
+    let url: string | null = this.prepareExternalUrl(path + normalizeQueryParams(queryParams));
     if (url.length == 0) {
       url = this._platformLocation.pathname;
     }
     this._platformLocation.pushState(state, title, url);
   }
 
-  replaceState(state: any, title: string, path: string, queryParams: string) {
+  override replaceState(state: any, title: string, path: string, queryParams: string) {
     let url = this.prepareExternalUrl(path + normalizeQueryParams(queryParams));
     if (url.length == 0) {
       url = this._platformLocation.pathname;
@@ -82,11 +92,19 @@ export class HashLocationStrategy extends LocationStrategy {
     this._platformLocation.replaceState(state, title, url);
   }
 
-  forward(): void {
+  override forward(): void {
     this._platformLocation.forward();
   }
 
-  back(): void {
+  override back(): void {
     this._platformLocation.back();
+  }
+
+  override getState(): unknown {
+    return this._platformLocation.getState();
+  }
+
+  override historyGo(relativePosition: number = 0): void {
+    this._platformLocation.historyGo?.(relativePosition);
   }
 }

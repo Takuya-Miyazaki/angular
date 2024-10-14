@@ -3,21 +3,20 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
-
 
 /**
  * A marker that indicates the start of a segment in a mapping.
  *
- * The end of a segment is indicated by the the first segment-marker of another mapping whose start
+ * The end of a segment is indicated by the first segment-marker of another mapping whose start
  * is greater or equal to this one.
  */
 export interface SegmentMarker {
   readonly line: number;
   readonly column: number;
   readonly position: number;
-  next: SegmentMarker|undefined;
+  next: SegmentMarker | undefined;
 }
 
 /**
@@ -39,7 +38,10 @@ export function compareSegments(a: SegmentMarker, b: SegmentMarker): number {
  * @param offset the number of character to offset by.
  */
 export function offsetSegment(
-    startOfLinePositions: number[], marker: SegmentMarker, offset: number): SegmentMarker {
+  startOfLinePositions: number[],
+  marker: SegmentMarker,
+  offset: number,
+): SegmentMarker {
   if (offset === 0) {
     return marker;
   }

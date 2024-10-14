@@ -3,7 +3,7 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {DOCUMENT} from '@angular/common';
@@ -19,11 +19,11 @@ export class DomEventsPlugin extends EventManagerPlugin {
 
   // This plugin should come last in the list of plugins, because it accepts all
   // events.
-  supports(eventName: string): boolean {
+  override supports(eventName: string): boolean {
     return true;
   }
 
-  addEventListener(element: HTMLElement, eventName: string, handler: Function): Function {
+  override addEventListener(element: HTMLElement, eventName: string, handler: Function): Function {
     element.addEventListener(eventName, handler as EventListener, false);
     return () => this.removeEventListener(element, eventName, handler as EventListener);
   }

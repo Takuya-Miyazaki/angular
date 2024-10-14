@@ -3,595 +3,453 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {Routes} from '../src/config';
-import {recognize} from '../src/recognize';
+import {EnvironmentInjector} from '@angular/core';
+import {TestBed} from '@angular/core/testing';
+
+import {Routes, UrlMatcher} from '../src/models';
+import {Recognizer} from '../src/recognize';
+import {RouterConfigLoader} from '../src/router_config_loader';
 import {ActivatedRouteSnapshot, RouterStateSnapshot} from '../src/router_state';
 import {Params, PRIMARY_OUTLET} from '../src/shared';
 import {DefaultUrlSerializer, UrlTree} from '../src/url_tree';
 
-describe('recognize', () => {
-  it('should work', () => {
-    checkRecognize([{path: 'a', component: ComponentA}], 'a', (s: any) => {
-      checkActivatedRoute(s.root, '', {}, RootComponent);
-      checkActivatedRoute(s.firstChild(s.root)!, 'a', {}, ComponentA);
-    });
+describe('recognize', async () => {
+  it('should work', async () => {
+    const s = await recognize([{path: 'a', component: ComponentA}], 'a');
+    checkActivatedRoute(s.root, '', {}, RootComponent);
+    checkActivatedRoute(s.root.firstChild!, 'a', {}, ComponentA);
   });
 
-  it('should freeze params object', () => {
-    checkRecognize([{path: 'a/:id', component: ComponentA}], 'a/10', (s: RouterStateSnapshot) => {
-      checkActivatedRoute(s.root, '', {}, RootComponent);
-      const child = (s as any).firstChild(s.root)!;
-      expect(Object.isFrozen(child.params)).toBeTruthy();
-    });
+  it('should freeze params object', async () => {
+    const s: RouterStateSnapshot = await recognize(
+      [{path: 'a/:id', component: ComponentA}],
+      'a/10',
+    );
+    checkActivatedRoute(s.root, '', {}, RootComponent);
+    const child = s.root.firstChild!;
+    expect(Object.isFrozen(child.params)).toBeTruthy();
   });
 
-  it('should support secondary routes', () => {
-    checkRecognize(
-        [
-          {path: 'a', component: ComponentA}, {path: 'b', component: ComponentB, outlet: 'left'},
-          {path: 'c', component: ComponentC, outlet: 'right'}
-        ],
-        'a(left:b//right:c)', (s: RouterStateSnapshot) => {
-          const c = (s as any).children(s.root);
-          checkActivatedRoute(c[0], 'a', {}, ComponentA);
-          checkActivatedRoute(c[1], 'b', {}, ComponentB, 'left');
-          checkActivatedRoute(c[2], 'c', {}, ComponentC, 'right');
-        });
+  it('should freeze data object (but not original route data)', async () => {
+    const someData = {a: 1};
+    const s: RouterStateSnapshot = await recognize(
+      [{path: '**', component: ComponentA, data: someData}],
+      'a',
+    );
+    checkActivatedRoute(s.root, '', {}, RootComponent);
+    const child = s.root.firstChild!;
+    expect(Object.isFrozen(child.data)).toBeTruthy();
+    expect(Object.isFrozen(someData)).toBeFalsy();
   });
 
-  it('should set url segment and index properly', () => {
+  it('should support secondary routes', async () => {
+    const s: RouterStateSnapshot = await recognize(
+      [
+        {path: 'a', component: ComponentA},
+        {path: 'b', component: ComponentB, outlet: 'left'},
+        {path: 'c', component: ComponentC, outlet: 'right'},
+      ],
+      'a(left:b//right:c)',
+    );
+    const c = s.root.children;
+    checkActivatedRoute(c[0], 'a', {}, ComponentA);
+    checkActivatedRoute(c[1], 'b', {}, ComponentB, 'left');
+    checkActivatedRoute(c[2], 'c', {}, ComponentC, 'right');
+  });
+
+  it('should set url segment and index properly', async () => {
     const url = tree('a(left:b//right:c)');
-    recognize(
-        RootComponent,
-        [
-          {path: 'a', component: ComponentA}, {path: 'b', component: ComponentB, outlet: 'left'},
-          {path: 'c', component: ComponentC, outlet: 'right'}
-        ],
-        url, 'a(left:b//right:c)')
-        .subscribe((s: any) => {
-          expect(s.root._urlSegment).toBe(url.root);
-          expect(s.root._lastPathIndex).toBe(-1);
+    const s = await recognize(
+      [
+        {path: 'a', component: ComponentA},
+        {path: 'b', component: ComponentB, outlet: 'left'},
+        {path: 'c', component: ComponentC, outlet: 'right'},
+      ],
+      'a(left:b//right:c)',
+    );
+    expect(s.root.url.toString()).toEqual(url.root.toString());
 
-          const c = (s as any).children(s.root);
-          expect(c[0]._urlSegment).toBe((url.root as any).children[PRIMARY_OUTLET]);
-          expect(c[0]._lastPathIndex).toBe(0);
+    const c = s.root.children;
+    expect(c[0].url.toString()).toEqual(url.root.children[PRIMARY_OUTLET].toString());
 
-          expect(c[1]._urlSegment).toBe((url.root as any).children['left']);
-          expect(c[1]._lastPathIndex).toBe(0);
+    expect(c[1].url.toString()).toEqual(url.root.children['left'].toString());
 
-          expect(c[2]._urlSegment).toBe((url.root as any).children['right']);
-          expect(c[2]._lastPathIndex).toBe(0);
-        });
+    expect(c[2].url.toString()).toEqual(url.root.children['right'].toString());
   });
 
-  it('should set url segment and index properly (nested case)', () => {
-    const url = tree('a/b/c');
-    recognize(
-        RootComponent,
-        [
-          {path: 'a/b', component: ComponentA, children: [{path: 'c', component: ComponentC}]},
-        ],
-        url, 'a/b/c')
-        .subscribe((s: RouterStateSnapshot) => {
-          expect((s.root as any)._urlSegment).toBe(url.root);
-          expect((s.root as any)._lastPathIndex).toBe(-1);
+  it('should match routes in the depth first order', async () => {
+    const s = await recognize(
+      [
+        {path: 'a', component: ComponentA, children: [{path: ':id', component: ComponentB}]},
+        {path: 'a/:id', component: ComponentC},
+      ],
+      'a/paramA',
+    );
+    checkActivatedRoute(s.root, '', {}, RootComponent);
+    checkActivatedRoute(s.root.firstChild!, 'a', {}, ComponentA);
+    checkActivatedRoute(s.root.firstChild!.firstChild!, 'paramA', {id: 'paramA'}, ComponentB);
 
-          const compA = (s as any).firstChild(s.root)!;
-          expect(compA._urlSegment).toBe((url.root as any).children[PRIMARY_OUTLET]);
-          expect(compA._lastPathIndex).toBe(1);
-
-          const compC = (s as any).firstChild(<any>compA)!;
-          expect(compC._urlSegment).toBe((url.root as any).children[PRIMARY_OUTLET]);
-          expect(compC._lastPathIndex).toBe(2);
-        });
+    const s2 = await recognize(
+      [
+        {path: 'a', component: ComponentA},
+        {path: 'a/:id', component: ComponentC},
+      ],
+      'a/paramA',
+    );
+    checkActivatedRoute(s2.root, '', {}, RootComponent);
+    checkActivatedRoute(s2.root.firstChild!, 'a/paramA', {id: 'paramA'}, ComponentC);
   });
 
-  it('should set url segment and index properly (wildcard)', () => {
-    const url = tree('a/b/c');
-    recognize(
-        RootComponent,
-        [
-          {path: 'a', component: ComponentA, children: [{path: '**', component: ComponentB}]},
-        ],
-        url, 'a/b/c')
-        .subscribe((s: any) => {
-          expect(s.root._urlSegment).toBe(url.root);
-          expect(s.root._lastPathIndex).toBe(-1);
-
-          const compA = (s as any).firstChild(s.root)!;
-          expect(compA._urlSegment).toBe((url as any).root.children[PRIMARY_OUTLET]);
-          expect(compA._lastPathIndex).toBe(0);
-
-          const compC = (s as any).firstChild(<any>compA)!;
-          expect(compC._urlSegment).toBe((url as any).root.children[PRIMARY_OUTLET]);
-          expect(compC._lastPathIndex).toBe(2);
-        });
+  it('should use outlet name when matching secondary routes', async () => {
+    const s = await recognize(
+      [
+        {path: 'a', component: ComponentA},
+        {path: 'b', component: ComponentB, outlet: 'left'},
+        {path: 'b', component: ComponentC, outlet: 'right'},
+      ],
+      'a(right:b)',
+    );
+    const c = s.root.children;
+    checkActivatedRoute(c[0], 'a', {}, ComponentA);
+    checkActivatedRoute(c[1], 'b', {}, ComponentC, 'right');
   });
 
-  it('should match routes in the depth first order', () => {
-    checkRecognize(
-        [
-          {path: 'a', component: ComponentA, children: [{path: ':id', component: ComponentB}]},
-          {path: 'a/:id', component: ComponentC}
-        ],
-        'a/paramA', (s: RouterStateSnapshot) => {
-          checkActivatedRoute(s.root, '', {}, RootComponent);
-          checkActivatedRoute((s as any).firstChild(s.root)!, 'a', {}, ComponentA);
-          checkActivatedRoute(
-              (s as any).firstChild(<any>(s as any).firstChild(s.root))!, 'paramA', {id: 'paramA'},
-              ComponentB);
-        });
-
-    checkRecognize(
-        [{path: 'a', component: ComponentA}, {path: 'a/:id', component: ComponentC}], 'a/paramA',
-        (s: RouterStateSnapshot) => {
-          checkActivatedRoute(s.root, '', {}, RootComponent);
-          checkActivatedRoute(
-              (s as any).firstChild(s.root)!, 'a/paramA', {id: 'paramA'}, ComponentC);
-        });
+  it('should handle non top-level secondary routes', async () => {
+    const s = await recognize(
+      [
+        {
+          path: 'a',
+          component: ComponentA,
+          children: [
+            {path: 'b', component: ComponentB},
+            {path: 'c', component: ComponentC, outlet: 'left'},
+          ],
+        },
+      ],
+      'a/(b//left:c)',
+    );
+    const c = s.root.firstChild!.children;
+    checkActivatedRoute(c[0], 'b', {}, ComponentB, PRIMARY_OUTLET);
+    checkActivatedRoute(c[1], 'c', {}, ComponentC, 'left');
   });
 
-  it('should use outlet name when matching secondary routes', () => {
-    checkRecognize(
-        [
-          {path: 'a', component: ComponentA}, {path: 'b', component: ComponentB, outlet: 'left'},
-          {path: 'b', component: ComponentC, outlet: 'right'}
-        ],
-        'a(right:b)', (s: RouterStateSnapshot) => {
-          const c = (s as any).children(s.root);
-          checkActivatedRoute(c[0], 'a', {}, ComponentA);
-          checkActivatedRoute(c[1], 'b', {}, ComponentC, 'right');
-        });
+  it('should sort routes by outlet name', async () => {
+    const s = await recognize(
+      [
+        {path: 'a', component: ComponentA},
+        {path: 'c', component: ComponentC, outlet: 'c'},
+        {path: 'b', component: ComponentB, outlet: 'b'},
+      ],
+      'a(c:c//b:b)',
+    );
+    const c = s.root.children;
+    checkActivatedRoute(c[0], 'a', {}, ComponentA);
+    checkActivatedRoute(c[1], 'b', {}, ComponentB, 'b');
+    checkActivatedRoute(c[2], 'c', {}, ComponentC, 'c');
   });
 
-  it('should handle non top-level secondary routes', () => {
-    checkRecognize(
+  it('should support matrix parameters', async () => {
+    const s = await recognize(
+      [
+        {path: 'a', component: ComponentA, children: [{path: 'b', component: ComponentB}]},
+        {path: 'c', component: ComponentC, outlet: 'left'},
+      ],
+      'a;a1=11;a2=22/b;b1=111;b2=222(left:c;c1=1111;c2=2222)',
+    );
+    const c = s.root.children;
+    checkActivatedRoute(c[0], 'a', {a1: '11', a2: '22'}, ComponentA);
+    checkActivatedRoute(c[0].firstChild!, 'b', {b1: '111', b2: '222'}, ComponentB);
+    checkActivatedRoute(c[1], 'c', {c1: '1111', c2: '2222'}, ComponentC, 'left');
+  });
+
+  describe('data', async () => {
+    it('should set static data', async () => {
+      const s = await recognize([{path: 'a', data: {one: 1}, component: ComponentA}], 'a');
+      const r: ActivatedRouteSnapshot = s.root.firstChild!;
+      expect(r.data).toEqual({one: 1});
+    });
+
+    it("should inherit componentless route's data", async () => {
+      const s = await recognize(
+        [
+          {
+            path: 'a',
+            data: {one: 1},
+            children: [{path: 'b', data: {two: 2}, component: ComponentB}],
+          },
+        ],
+        'a/b',
+      );
+      const r: ActivatedRouteSnapshot = s.root.firstChild!.firstChild!;
+      expect(r.data).toEqual({one: 1, two: 2});
+    });
+
+    it("should not inherit route's data if it has component", async () => {
+      const s = await recognize(
         [
           {
             path: 'a',
             component: ComponentA,
-            children: [
-              {path: 'b', component: ComponentB}, {path: 'c', component: ComponentC, outlet: 'left'}
-            ]
+            data: {one: 1},
+            children: [{path: 'b', data: {two: 2}, component: ComponentB}],
           },
         ],
-        'a/(b//left:c)', (s: RouterStateSnapshot) => {
-          const c = (s as any).children(<any>(s as any).firstChild(s.root));
-          checkActivatedRoute(c[0], 'b', {}, ComponentB, PRIMARY_OUTLET);
-          checkActivatedRoute(c[1], 'c', {}, ComponentC, 'left');
-        });
-  });
-
-  it('should sort routes by outlet name', () => {
-    checkRecognize(
-        [
-          {path: 'a', component: ComponentA}, {path: 'c', component: ComponentC, outlet: 'c'},
-          {path: 'b', component: ComponentB, outlet: 'b'}
-        ],
-        'a(c:c//b:b)', (s: RouterStateSnapshot) => {
-          const c = (s as any).children(s.root);
-          checkActivatedRoute(c[0], 'a', {}, ComponentA);
-          checkActivatedRoute(c[1], 'b', {}, ComponentB, 'b');
-          checkActivatedRoute(c[2], 'c', {}, ComponentC, 'c');
-        });
-  });
-
-  it('should support matrix parameters', () => {
-    checkRecognize(
-        [
-          {path: 'a', component: ComponentA, children: [{path: 'b', component: ComponentB}]},
-          {path: 'c', component: ComponentC, outlet: 'left'}
-        ],
-        'a;a1=11;a2=22/b;b1=111;b2=222(left:c;c1=1111;c2=2222)', (s: RouterStateSnapshot) => {
-          const c = (s as any).children(s.root);
-          checkActivatedRoute(c[0], 'a', {a1: '11', a2: '22'}, ComponentA);
-          checkActivatedRoute(
-              (s as any).firstChild(<any>c[0])!, 'b', {b1: '111', b2: '222'}, ComponentB);
-          checkActivatedRoute(c[1], 'c', {c1: '1111', c2: '2222'}, ComponentC, 'left');
-        });
-  });
-
-  describe('data', () => {
-    it('should set static data', () => {
-      checkRecognize(
-          [{path: 'a', data: {one: 1}, component: ComponentA}], 'a', (s: RouterStateSnapshot) => {
-            const r: ActivatedRouteSnapshot = (s as any).firstChild(s.root)!;
-            expect(r.data).toEqual({one: 1});
-          });
+        'a/b',
+      );
+      const r: ActivatedRouteSnapshot = s.root.firstChild!.firstChild!;
+      expect(r.data).toEqual({two: 2});
     });
 
-    it('should inherit componentless route\'s data', () => {
-      checkRecognize(
-          [{
+    it("should not inherit route's data if it has loadComponent", async () => {
+      const s = await recognize(
+        [
+          {
             path: 'a',
+            loadComponent: () => ComponentA,
             data: {one: 1},
-            children: [{path: 'b', data: {two: 2}, component: ComponentB}]
-          }],
-          'a/b', (s: RouterStateSnapshot) => {
-            const r: ActivatedRouteSnapshot =
-                (s as any).firstChild(<any>(s as any).firstChild(s.root))!;
-            expect(r.data).toEqual({one: 1, two: 2});
-          });
+            children: [{path: 'b', data: {two: 2}, component: ComponentB}],
+          },
+        ],
+        'a/b',
+      );
+      const r: ActivatedRouteSnapshot = s.root.firstChild!.firstChild!;
+      expect(r.data).toEqual({two: 2});
     });
 
-    it('should not inherit route\'s data if it has component', () => {
-      checkRecognize(
-          [{
+    it("should inherit route's data if paramsInheritanceStrategy is 'always'", async () => {
+      const s = await recognize(
+        [
+          {
             path: 'a',
             component: ComponentA,
             data: {one: 1},
-            children: [{path: 'b', data: {two: 2}, component: ComponentB}]
-          }],
-          'a/b', (s: any /* RouterStateSnapshot */) => {
-            const r: ActivatedRouteSnapshot = s.firstChild(<any>s.firstChild(s.root))!;
-            expect(r.data).toEqual({two: 2});
-          });
+            children: [{path: 'b', data: {two: 2}, component: ComponentB}],
+          },
+        ],
+        'a/b',
+        'always',
+      );
+      const r: ActivatedRouteSnapshot = s.root.firstChild!.firstChild!;
+      expect(r.data).toEqual({one: 1, two: 2});
     });
 
-    it('should inherit route\'s data if paramsInheritanceStrategy is \'always\'', () => {
-      checkRecognize(
-          [{
-            path: 'a',
-            component: ComponentA,
-            data: {one: 1},
-            children: [{path: 'b', data: {two: 2}, component: ComponentB}]
-          }],
-          'a/b', (s: any /* RouterStateSnapshot */) => {
-            const r: ActivatedRouteSnapshot = s.firstChild(<any>s.firstChild(s.root))!;
-            expect(r.data).toEqual({one: 1, two: 2});
-          }, 'always');
-    });
-
-    it('should set resolved data', () => {
-      checkRecognize(
-          [{path: 'a', resolve: {one: 'some-token'}, component: ComponentA}], 'a', (s: any) => {
-            const r: any = s.firstChild(s.root)!;
-            expect(r._resolve).toEqual({one: 'some-token'});
-          });
+    it('should set resolved data', async () => {
+      const s = await recognize(
+        [{path: 'a', resolve: {one: 'some-token'}, component: ComponentA}],
+        'a',
+      );
+      const r: any = s.root.firstChild!;
+      expect(r._resolve).toEqual({one: 'some-token'});
     });
   });
 
-  describe('empty path', () => {
-    describe('root', () => {
-      it('should work', () => {
-        checkRecognize([{path: '', component: ComponentA}], '', (s: RouterStateSnapshot) => {
-          checkActivatedRoute((s as any).firstChild(s.root)!, '', {}, ComponentA);
-        });
+  describe('empty path', async () => {
+    describe('root', async () => {
+      it('should work', async () => {
+        const s = await recognize([{path: '', component: ComponentA}], '');
+        checkActivatedRoute(s.root.firstChild!, '', {}, ComponentA);
       });
 
-      it('should match when terminal', () => {
-        checkRecognize(
-            [{path: '', pathMatch: 'full', component: ComponentA}], '',
-            (s: RouterStateSnapshot) => {
-              checkActivatedRoute((s as any).firstChild(s.root)!, '', {}, ComponentA);
-            });
+      it('should match when terminal', async () => {
+        const s = await recognize([{path: '', pathMatch: 'full', component: ComponentA}], '');
+        checkActivatedRoute(s.root.firstChild!, '', {}, ComponentA);
       });
 
-      it('should work (nested case)', () => {
-        checkRecognize(
-            [{path: '', component: ComponentA, children: [{path: '', component: ComponentB}]}], '',
-            (s: RouterStateSnapshot) => {
-              checkActivatedRoute((s as any).firstChild(s.root)!, '', {}, ComponentA);
-              checkActivatedRoute(
-                  (s as any).firstChild(<any>(s as any).firstChild(s.root))!, '', {}, ComponentB);
-            });
+      it('should work (nested case)', async () => {
+        const s = await recognize(
+          [{path: '', component: ComponentA, children: [{path: '', component: ComponentB}]}],
+          '',
+        );
+        checkActivatedRoute(s.root.firstChild!, '', {}, ComponentA);
+        checkActivatedRoute(s.root.firstChild!.firstChild!, '', {}, ComponentB);
       });
 
-      it('should set url segment and index properly', () => {
-        const url = tree('') as any;
-        recognize(
-            RootComponent,
-            [{path: '', component: ComponentA, children: [{path: '', component: ComponentB}]}], url,
-            '')
-            .forEach((s: any) => {
-              expect(s.root._urlSegment).toBe(url.root);
-              expect(s.root._lastPathIndex).toBe(-1);
-
-              const c = s.firstChild(s.root)!;
-              expect(c._urlSegment).toBe(url.root);
-              expect(c._lastPathIndex).toBe(-1);
-
-              const c2 = s.firstChild(<any>s.firstChild(s.root))!;
-              expect(c2._urlSegment).toBe(url.root);
-              expect(c2._lastPathIndex).toBe(-1);
-            });
-      });
-
-      it('should inherit params', () => {
-        checkRecognize(
-            [{
-              path: 'a',
-              component: ComponentA,
-              children:
-                  [{path: '', component: ComponentB, children: [{path: '', component: ComponentC}]}]
-            }],
-            '/a;p=1', (s: RouterStateSnapshot) => {
-              checkActivatedRoute((s as any).firstChild(s.root)!, 'a', {p: '1'}, ComponentA);
-              checkActivatedRoute(
-                  (s as any).firstChild((s as any).firstChild(s.root)!)!, '', {p: '1'}, ComponentB);
-              checkActivatedRoute(
-                  (s as any).firstChild((s as any).firstChild((s as any).firstChild(s.root)!)!)!,
-                  '', {p: '1'}, ComponentC);
-            });
-      });
-    });
-
-    describe('aux split is in the middle', () => {
-      it('should match (non-terminal)', () => {
-        checkRecognize(
-            [{
+      it('should inherit params', async () => {
+        const s = await recognize(
+          [
+            {
               path: 'a',
               component: ComponentA,
               children: [
-                {path: 'b', component: ComponentB}, {path: '', component: ComponentC, outlet: 'aux'}
-              ]
-            }],
-            'a/b', (s: RouterStateSnapshot) => {
-              checkActivatedRoute((s as any).firstChild(s.root)!, 'a', {}, ComponentA);
-
-              const c = (s as any).children((s as any).firstChild(s.root)!);
-              checkActivatedRoute(c[0], 'b', {}, ComponentB);
-              checkActivatedRoute(c[1], '', {}, ComponentC, 'aux');
-            });
+                {path: '', component: ComponentB, children: [{path: '', component: ComponentC}]},
+              ],
+            },
+          ],
+          '/a;p=1',
+        );
+        checkActivatedRoute(s.root.firstChild!, 'a', {p: '1'}, ComponentA);
+        checkActivatedRoute(s.root.firstChild!.firstChild!, '', {p: '1'}, ComponentB);
+        checkActivatedRoute(s.root.firstChild!.firstChild!.firstChild!, '', {p: '1'}, ComponentC);
       });
+    });
 
-      it('should match (non-terminal) when both primary and secondary and primary has a child',
-         () => {
-           const config = [{
-             path: 'parent',
-             children: [
-               {
-                 path: '',
-                 component: ComponentA,
-                 children: [
-                   {path: 'b', component: ComponentB},
-                   {path: 'c', component: ComponentC},
-                 ]
-               },
-               {
-                 path: '',
-                 component: ComponentD,
-                 outlet: 'secondary',
-               }
-             ]
-           }];
-
-           checkRecognize(config, 'parent/b', (s: RouterStateSnapshot) => {
-             checkActivatedRoute(s.root, '', {}, RootComponent);
-             checkActivatedRoute((s as any).firstChild(s.root)!, 'parent', {}, undefined!);
-
-             const cc = (s as any).children((s as any).firstChild(s.root)!);
-             checkActivatedRoute(cc[0], '', {}, ComponentA);
-             checkActivatedRoute(cc[1], '', {}, ComponentD, 'secondary');
-
-             checkActivatedRoute((s as any).firstChild(cc[0])!, 'b', {}, ComponentB);
-           });
-         });
-
-      it('should match (terminal)', () => {
-        checkRecognize(
-            [{
+    describe('aux split is in the middle', async () => {
+      it('should match (non-terminal)', async () => {
+        const s = await recognize(
+          [
+            {
               path: 'a',
               component: ComponentA,
               children: [
                 {path: 'b', component: ComponentB},
-                {path: '', pathMatch: 'full', component: ComponentC, outlet: 'aux'}
-              ]
-            }],
-            'a/b', (s: RouterStateSnapshot) => {
-              checkActivatedRoute((s as any).firstChild(s.root)!, 'a', {}, ComponentA);
+                {path: '', component: ComponentC, outlet: 'aux'},
+              ],
+            },
+          ],
+          'a/b',
+        );
+        checkActivatedRoute(s.root.firstChild!, 'a', {}, ComponentA);
 
-              const c = (s as any).children((s as any).firstChild(s.root)!);
-              expect(c.length).toEqual(1);
-              checkActivatedRoute(c[0], 'b', {}, ComponentB);
-            });
+        const c = s.root.firstChild!.children;
+        checkActivatedRoute(c[0], 'b', {}, ComponentB);
+        checkActivatedRoute(c[1], '', {}, ComponentC, 'aux');
       });
 
-      it('should set url segment and index properly', () => {
-        const url = tree('a/b') as any;
-        recognize(
-            RootComponent, [{
+      it('should match (non-terminal) when both primary and secondary and primary has a child', async () => {
+        const config = [
+          {
+            path: 'parent',
+            children: [
+              {
+                path: '',
+                component: ComponentA,
+                children: [
+                  {path: 'b', component: ComponentB},
+                  {path: 'c', component: ComponentC},
+                ],
+              },
+              {
+                path: '',
+                component: ComponentD,
+                outlet: 'secondary',
+              },
+            ],
+          },
+        ];
+
+        const s = await recognize(config, 'parent/b');
+        checkActivatedRoute(s.root, '', {}, RootComponent);
+        checkActivatedRoute(s.root.firstChild!, 'parent', {}, null);
+
+        const cc = s.root.firstChild!.children;
+        checkActivatedRoute(cc[0], '', {}, ComponentA);
+        checkActivatedRoute(cc[1], '', {}, ComponentD, 'secondary');
+
+        checkActivatedRoute(cc[0].firstChild!, 'b', {}, ComponentB);
+      });
+
+      it('should match (terminal)', async () => {
+        const s = await recognize(
+          [
+            {
               path: 'a',
               component: ComponentA,
               children: [
-                {path: 'b', component: ComponentB}, {path: '', component: ComponentC, outlet: 'aux'}
-              ]
-            }],
-            url, 'a/b')
-            .forEach((s: any) => {
-              expect(s.root._urlSegment).toBe(url.root);
-              expect(s.root._lastPathIndex).toBe(-1);
+                {path: 'b', component: ComponentB},
+                {path: '', pathMatch: 'full', component: ComponentC, outlet: 'aux'},
+              ],
+            },
+          ],
+          'a/b',
+        );
+        checkActivatedRoute(s.root.firstChild!, 'a', {}, ComponentA);
 
-              const a = s.firstChild(s.root)!;
-              expect(a._urlSegment).toBe(url.root.children[PRIMARY_OUTLET]);
-              expect(a._lastPathIndex).toBe(0);
-
-              const b = s.firstChild(a)!;
-              expect(b._urlSegment).toBe(url.root.children[PRIMARY_OUTLET]);
-              expect(b._lastPathIndex).toBe(1);
-
-              const c = s.children(a)[1];
-              expect(c._urlSegment).toBe(url.root.children[PRIMARY_OUTLET]);
-              expect(c._lastPathIndex).toBe(0);
-            });
-      });
-
-      it('should set url segment and index properly when nested empty-path segments', () => {
-        const url = tree('a') as any;
-        recognize(
-            RootComponent, [{
-              path: 'a',
-              children:
-                  [{path: '', component: ComponentB, children: [{path: '', component: ComponentC}]}]
-            }],
-            url, 'a')
-            .forEach((s: any) => {
-              expect(s.root._urlSegment).toBe(url.root);
-              expect(s.root._lastPathIndex).toBe(-1);
-
-              const a = s.firstChild(s.root)!;
-              expect(a._urlSegment).toBe(url.root.children[PRIMARY_OUTLET]);
-              expect(a._lastPathIndex).toBe(0);
-
-              const b = s.firstChild(a)!;
-              expect(b._urlSegment).toBe(url.root.children[PRIMARY_OUTLET]);
-              expect(b._lastPathIndex).toBe(0);
-
-              const c = s.firstChild(b)!;
-              expect(c._urlSegment).toBe(url.root.children[PRIMARY_OUTLET]);
-              expect(c._lastPathIndex).toBe(0);
-            });
-      });
-
-      it('should set url segment and index properly with the "corrected" option for nested empty-path segments',
-         () => {
-           const url = tree('a/b') as any;
-           recognize(
-               RootComponent, [{
-                 path: 'a',
-                 children: [{
-                   path: 'b',
-                   component: ComponentB,
-                   children: [{
-                     path: '',
-                     component: ComponentC,
-                     children: [{path: '', component: ComponentD}]
-                   }]
-                 }]
-               }],
-               url, 'a/b', 'emptyOnly', 'corrected')
-               .forEach((s: any) => {
-                 expect(s.root._urlSegment).toBe(url.root);
-                 expect(s.root._lastPathIndex).toBe(-1);
-
-                 const a = s.firstChild(s.root)!;
-                 expect(a._urlSegment).toBe(url.root.children[PRIMARY_OUTLET]);
-                 expect(a._lastPathIndex).toBe(0);
-
-                 const b = s.firstChild(a)!;
-                 expect(b._urlSegment).toBe(url.root.children[PRIMARY_OUTLET]);
-                 expect(b._lastPathIndex).toBe(1);
-
-                 const c = s.firstChild(b)!;
-                 expect(c._urlSegment).toBe(url.root.children[PRIMARY_OUTLET]);
-                 expect(c._lastPathIndex).toBe(1);
-
-                 const d = s.firstChild(c)!;
-                 expect(d._urlSegment).toBe(url.root.children[PRIMARY_OUTLET]);
-                 expect(d._lastPathIndex).toBe(1);
-               });
-         });
-
-      it('should set url segment and index properly when nested empty-path segments (2)', () => {
-        const url = tree('');
-        recognize(
-            RootComponent, [{
-              path: '',
-              children:
-                  [{path: '', component: ComponentB, children: [{path: '', component: ComponentC}]}]
-            }],
-            url, '')
-            .forEach((s: any) => {
-              expect(s.root._urlSegment).toBe(url.root);
-              expect(s.root._lastPathIndex).toBe(-1);
-
-              const a = (s as any).firstChild(s.root)!;
-              expect(a._urlSegment).toBe(url.root);
-              expect(a._lastPathIndex).toBe(-1);
-
-              const b = (s as any).firstChild(a)!;
-              expect(b._urlSegment).toBe(url.root);
-              expect(b._lastPathIndex).toBe(-1);
-
-              const c = (s as any).firstChild(b)!;
-              expect(c._urlSegment).toBe(url.root);
-              expect(c._lastPathIndex).toBe(-1);
-            });
+        const c = s.root.firstChild!.children;
+        expect(c.length).toEqual(1);
+        checkActivatedRoute(c[0], 'b', {}, ComponentB);
       });
     });
 
-    describe('aux split at the end (no right child)', () => {
-      it('should match (non-terminal)', () => {
-        checkRecognize(
-            [{
+    describe('aux split at the end (no right child)', async () => {
+      it('should match (non-terminal)', async () => {
+        const s = await recognize(
+          [
+            {
               path: 'a',
               component: ComponentA,
               children: [
                 {path: '', component: ComponentB},
                 {path: '', component: ComponentC, outlet: 'aux'},
-              ]
-            }],
-            'a', (s: RouterStateSnapshot) => {
-              checkActivatedRoute((s as any).firstChild(s.root)!, 'a', {}, ComponentA);
+              ],
+            },
+          ],
+          'a',
+        );
+        checkActivatedRoute(s.root.firstChild!, 'a', {}, ComponentA);
 
-              const c = (s as any).children((s as any).firstChild(s.root)!);
-              checkActivatedRoute(c[0], '', {}, ComponentB);
-              checkActivatedRoute(c[1], '', {}, ComponentC, 'aux');
-            });
+        const c = s.root.firstChild!.children;
+        checkActivatedRoute(c[0], '', {}, ComponentB);
+        checkActivatedRoute(c[1], '', {}, ComponentC, 'aux');
       });
 
-      it('should match (terminal)', () => {
-        checkRecognize(
-            [{
+      it('should match (terminal)', async () => {
+        const s = await recognize(
+          [
+            {
               path: 'a',
               component: ComponentA,
               children: [
                 {path: '', pathMatch: 'full', component: ComponentB},
                 {path: '', pathMatch: 'full', component: ComponentC, outlet: 'aux'},
-              ]
-            }],
-            'a', (s: RouterStateSnapshot) => {
-              checkActivatedRoute((s as any).firstChild(s.root)!, 'a', {}, ComponentA);
+              ],
+            },
+          ],
+          'a',
+        );
+        checkActivatedRoute(s.root.firstChild!, 'a', {}, ComponentA);
 
-              const c = (s as any).children((s as any).firstChild(s.root)!);
-              checkActivatedRoute(c[0], '', {}, ComponentB);
-              checkActivatedRoute(c[1], '', {}, ComponentC, 'aux');
-            });
+        const c = s.root.firstChild!.children;
+        checkActivatedRoute(c[0], '', {}, ComponentB);
+        checkActivatedRoute(c[1], '', {}, ComponentC, 'aux');
       });
 
-      it('should work only only primary outlet', () => {
-        checkRecognize(
-            [{
+      it('should work only only primary outlet', async () => {
+        const s = await recognize(
+          [
+            {
               path: 'a',
               component: ComponentA,
               children: [
                 {path: '', component: ComponentB},
                 {path: 'c', component: ComponentC, outlet: 'aux'},
-              ]
-            }],
-            'a/(aux:c)', (s: RouterStateSnapshot) => {
-              checkActivatedRoute((s as any).firstChild(s.root)!, 'a', {}, ComponentA);
+              ],
+            },
+          ],
+          'a/(aux:c)',
+        );
+        checkActivatedRoute(s.root.firstChild!, 'a', {}, ComponentA);
 
-              const c = (s as any).children((s as any).firstChild(s.root)!);
-              checkActivatedRoute(c[0], '', {}, ComponentB);
-              checkActivatedRoute(c[1], 'c', {}, ComponentC, 'aux');
-            });
+        const c = s.root.firstChild!.children;
+        checkActivatedRoute(c[0], '', {}, ComponentB);
+        checkActivatedRoute(c[1], 'c', {}, ComponentC, 'aux');
       });
 
-      it('should work when split is at the root level', () => {
-        checkRecognize(
-            [
-              {path: '', component: ComponentA}, {path: 'b', component: ComponentB},
-              {path: 'c', component: ComponentC, outlet: 'aux'}
-            ],
-            '(aux:c)', (s: RouterStateSnapshot) => {
-              checkActivatedRoute(s.root, '', {}, RootComponent);
+      it('should work when split is at the root level', async () => {
+        const s = await recognize(
+          [
+            {path: '', component: ComponentA},
+            {path: 'b', component: ComponentB},
+            {path: 'c', component: ComponentC, outlet: 'aux'},
+          ],
+          '(aux:c)',
+        );
+        checkActivatedRoute(s.root, '', {}, RootComponent);
 
-              const children = (s as any).children(s.root);
-              expect(children.length).toEqual(2);
-              checkActivatedRoute(children[0], '', {}, ComponentA);
-              checkActivatedRoute(children[1], 'c', {}, ComponentC, 'aux');
-            });
+        const children = s.root.children;
+        expect(children.length).toEqual(2);
+        checkActivatedRoute(children[0], '', {}, ComponentA);
+        checkActivatedRoute(children[1], 'c', {}, ComponentC, 'aux');
       });
     });
 
-    describe('split at the end (right child)', () => {
-      it('should match (non-terminal)', () => {
-        checkRecognize(
-            [{
+    describe('split at the end (right child)', async () => {
+      it('should match (non-terminal)', async () => {
+        const s = await recognize(
+          [
+            {
               path: 'a',
               component: ComponentA,
               children: [
@@ -600,125 +458,270 @@ describe('recognize', () => {
                   path: '',
                   component: ComponentC,
                   outlet: 'aux',
-                  children: [{path: 'e', component: ComponentE}]
+                  children: [{path: 'e', component: ComponentE}],
                 },
-              ]
-            }],
-            'a/(d//aux:e)', (s: RouterStateSnapshot) => {
-              checkActivatedRoute((s as any).firstChild(s.root)!, 'a', {}, ComponentA);
+              ],
+            },
+          ],
+          'a/(d//aux:e)',
+        );
+        checkActivatedRoute(s.root.firstChild!, 'a', {}, ComponentA);
 
-              const c = (s as any).children((s as any).firstChild(s.root)!);
-              checkActivatedRoute(c[0], '', {}, ComponentB);
-              checkActivatedRoute((s as any).firstChild(c[0])!, 'd', {}, ComponentD);
-              checkActivatedRoute(c[1], '', {}, ComponentC, 'aux');
-              checkActivatedRoute((s as any).firstChild(c[1])!, 'e', {}, ComponentE);
-            });
+        const c = s.root.firstChild!.children;
+        checkActivatedRoute(c[0], '', {}, ComponentB);
+        checkActivatedRoute(c[0].firstChild!, 'd', {}, ComponentD);
+        checkActivatedRoute(c[1], '', {}, ComponentC, 'aux');
+        checkActivatedRoute(c[1].firstChild!, 'e', {}, ComponentE);
+      });
+    });
+
+    describe('with outlets', async () => {
+      it('should work when outlet is a child of empty path parent', async () => {
+        const s = await recognize(
+          [
+            {
+              path: '',
+              component: ComponentA,
+              children: [{path: 'b', outlet: 'b', component: ComponentB}],
+            },
+          ],
+          '(b:b)',
+        );
+        checkActivatedRoute(s.root.children[0], '', {}, ComponentA);
+        checkActivatedRoute(s.root.children[0].children[0], 'b', {}, ComponentB, 'b');
+      });
+
+      it('should work for outlets adjacent to empty path', async () => {
+        const s = await recognize(
+          [
+            {
+              path: '',
+              component: ComponentA,
+              children: [{path: '', component: ComponentC}],
+            },
+            {path: 'b', outlet: 'b', component: ComponentB},
+          ],
+          '(b:b)',
+        );
+        const [primaryChild, outletChild] = s.root.children;
+        checkActivatedRoute(primaryChild, '', {}, ComponentA);
+        checkActivatedRoute(outletChild, 'b', {}, ComponentB, 'b');
+        checkActivatedRoute(primaryChild.children[0], '', {}, ComponentC);
+      });
+
+      it('should work with named outlets both adjecent to and as a child of empty path', async () => {
+        const s = await recognize(
+          [
+            {
+              path: '',
+              component: ComponentA,
+              children: [{path: 'b', outlet: 'b', component: ComponentB}],
+            },
+            {path: 'c', outlet: 'c', component: ComponentC},
+          ],
+          '(b:b//c:c)',
+        );
+        checkActivatedRoute(s.root.children[0], '', {}, ComponentA);
+        checkActivatedRoute(s.root.children[1], 'c', {}, ComponentC, 'c');
+        checkActivatedRoute(s.root.children[0].children[0], 'b', {}, ComponentB, 'b');
+      });
+
+      it('should work with children outlets within two levels of empty parents', async () => {
+        const s = await recognize(
+          [
+            {
+              path: '',
+              component: ComponentA,
+              children: [
+                {
+                  path: '',
+                  component: ComponentB,
+                  children: [{path: 'c', outlet: 'c', component: ComponentC}],
+                },
+              ],
+            },
+          ],
+          '(c:c)',
+        );
+        const [compAConfig] = s.root.children;
+        checkActivatedRoute(compAConfig, '', {}, ComponentA);
+        expect(compAConfig.children.length).toBe(1);
+
+        const [compBConfig] = compAConfig.children;
+        checkActivatedRoute(compBConfig, '', {}, ComponentB);
+        expect(compBConfig.children.length).toBe(1);
+
+        const [compCConfig] = compBConfig.children;
+        checkActivatedRoute(compCConfig, 'c', {}, ComponentC, 'c');
+      });
+
+      it('should not persist a primary segment beyond the boundary of a named outlet match', async () => {
+        const recognizePromise = new Recognizer(
+          TestBed.inject(EnvironmentInjector),
+          TestBed.inject(RouterConfigLoader),
+          RootComponent,
+          [
+            {
+              path: '',
+              component: ComponentA,
+              outlet: 'a',
+              children: [{path: 'b', component: ComponentB}],
+            },
+          ],
+          tree('/b'),
+          'emptyOnly',
+          new DefaultUrlSerializer(),
+        )
+          .recognize()
+          .toPromise();
+        await expectAsync(recognizePromise).toBeRejected();
       });
     });
   });
 
-  describe('wildcards', () => {
-    it('should support simple wildcards', () => {
-      checkRecognize(
-          [{path: '**', component: ComponentA}], 'a/b/c/d;a1=11', (s: RouterStateSnapshot) => {
-            checkActivatedRoute((s as any).firstChild(s.root)!, 'a/b/c/d', {a1: '11'}, ComponentA);
-          });
+  describe('wildcards', async () => {
+    it('should support simple wildcards', async () => {
+      const s = await recognize([{path: '**', component: ComponentA}], 'a/b/c/d;a1=11');
+      checkActivatedRoute(s.root.firstChild!, 'a/b/c/d', {a1: '11'}, ComponentA);
     });
   });
 
-  describe('componentless routes', () => {
-    it('should work', () => {
-      checkRecognize(
-          [{
+  describe('componentless routes', async () => {
+    it('should work', async () => {
+      const s = await recognize(
+        [
+          {
             path: 'p/:id',
             children: [
-              {path: 'a', component: ComponentA}, {path: 'b', component: ComponentB, outlet: 'aux'}
-            ]
-          }],
-          'p/11;pp=22/(a;pa=33//aux:b;pb=44)', (s: RouterStateSnapshot) => {
-            const p = (s as any).firstChild(s.root)!;
-            checkActivatedRoute(p, 'p/11', {id: '11', pp: '22'}, undefined!);
+              {path: 'a', component: ComponentA},
+              {path: 'b', component: ComponentB, outlet: 'aux'},
+            ],
+          },
+        ],
+        'p/11;pp=22/(a;pa=33//aux:b;pb=44)',
+      );
+      const p = s.root.firstChild!;
+      checkActivatedRoute(p, 'p/11', {id: '11', pp: '22'}, null);
 
-            const c = (s as any).children(p);
-            checkActivatedRoute(c[0], 'a', {id: '11', pp: '22', pa: '33'}, ComponentA);
-            checkActivatedRoute(c[1], 'b', {id: '11', pp: '22', pb: '44'}, ComponentB, 'aux');
-          });
+      const c = p.children;
+      checkActivatedRoute(c[0], 'a', {id: '11', pp: '22', pa: '33'}, ComponentA);
+      checkActivatedRoute(c[1], 'b', {id: '11', pp: '22', pb: '44'}, ComponentB, 'aux');
     });
 
-    it('should inherit params until encounters a normal route', () => {
-      checkRecognize(
-          [{
+    it('should inherit params until encounters a normal route', async () => {
+      const s = await recognize(
+        [
+          {
             path: 'p/:id',
-            children: [{
-              path: 'a/:name',
-              children: [
-                {path: 'b', component: ComponentB, children: [{path: 'c', component: ComponentC}]}
-              ]
-            }]
-          }],
-          'p/11/a/victor/b/c', (s: RouterStateSnapshot) => {
-            const p = (s as any).firstChild(s.root)!;
-            checkActivatedRoute(p, 'p/11', {id: '11'}, undefined!);
+            children: [
+              {
+                path: 'a/:name',
+                children: [
+                  {
+                    path: 'b',
+                    component: ComponentB,
+                    children: [{path: 'c', component: ComponentC}],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        'p/11/a/victor/b/c',
+      );
+      const p = s.root.firstChild!;
+      checkActivatedRoute(p, 'p/11', {id: '11'}, null);
 
-            const a = (s as any).firstChild(p)!;
-            checkActivatedRoute(a, 'a/victor', {id: '11', name: 'victor'}, undefined!);
+      const a = p.firstChild!;
+      checkActivatedRoute(a, 'a/victor', {id: '11', name: 'victor'}, null);
 
-            const b = (s as any).firstChild(a)!;
-            checkActivatedRoute(b, 'b', {id: '11', name: 'victor'}, ComponentB);
+      const b = a.firstChild!;
+      checkActivatedRoute(b, 'b', {id: '11', name: 'victor'}, ComponentB);
 
-            const c = (s as any).firstChild(b)!;
-            checkActivatedRoute(c, 'c', {}, ComponentC);
-          });
+      const c = b.firstChild!;
+      checkActivatedRoute(c, 'c', {}, ComponentC);
     });
 
-    it('should inherit all params if paramsInheritanceStrategy is \'always\'', () => {
-      checkRecognize(
-          [{
+    it("should inherit all params if paramsInheritanceStrategy is 'always'", async () => {
+      const s = await recognize(
+        [
+          {
             path: 'p/:id',
-            children: [{
-              path: 'a/:name',
-              children: [
-                {path: 'b', component: ComponentB, children: [{path: 'c', component: ComponentC}]}
-              ]
-            }]
-          }],
-          'p/11/a/victor/b/c', (s: any /* RouterStateSnapshot */) => {
-            const c = s.firstChild(s.firstChild(s.firstChild(s.firstChild(s.root)!)!)!)!;
-            checkActivatedRoute(c, 'c', {id: '11', name: 'victor'}, ComponentC);
-          }, 'always');
+            children: [
+              {
+                path: 'a/:name',
+                children: [
+                  {
+                    path: 'b',
+                    component: ComponentB,
+                    children: [{path: 'c', component: ComponentC}],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        'p/11/a/victor/b/c',
+        'always',
+      );
+      const c = s.root.firstChild!.firstChild!.firstChild!.firstChild!;
+      checkActivatedRoute(c, 'c', {id: '11', name: 'victor'}, ComponentC);
     });
   });
 
-  describe('empty URL leftovers', () => {
-    it('should not throw when no children matching', () => {
-      checkRecognize(
-          [{path: 'a', component: ComponentA, children: [{path: 'b', component: ComponentB}]}],
-          '/a', (s: RouterStateSnapshot) => {
-            const a = (s as any).firstChild(s.root);
-            checkActivatedRoute(a!, 'a', {}, ComponentA);
-          });
+  describe('empty URL leftovers', async () => {
+    it('should not throw when no children matching', async () => {
+      const s = await recognize(
+        [{path: 'a', component: ComponentA, children: [{path: 'b', component: ComponentB}]}],
+        '/a',
+      );
+      const a = s.root.firstChild;
+      checkActivatedRoute(a!, 'a', {}, ComponentA);
     });
 
-    it('should not throw when no children matching (aux routes)', () => {
-      checkRecognize(
-          [{
+    it('should not throw when no children matching (aux routes)', async () => {
+      const s = await recognize(
+        [
+          {
             path: 'a',
             component: ComponentA,
             children: [
               {path: 'b', component: ComponentB},
               {path: '', component: ComponentC, outlet: 'aux'},
-            ]
-          }],
-          '/a', (s: RouterStateSnapshot) => {
-            const a = (s as any).firstChild(s.root)!;
-            checkActivatedRoute(a, 'a', {}, ComponentA);
-            checkActivatedRoute((a as any).children[0], '', {}, ComponentC, 'aux');
-          });
+            ],
+          },
+        ],
+        '/a',
+      );
+      const a = s.root.firstChild!;
+      checkActivatedRoute(a, 'a', {}, ComponentA);
+      checkActivatedRoute(a.children[0], '', {}, ComponentC, 'aux');
     });
   });
 
-  describe('custom path matchers', () => {
-    it('should use custom path matcher', () => {
+  describe('custom path matchers', async () => {
+    it('should run once', async () => {
+      let calls = 0;
+      const matcher: UrlMatcher = (s) => {
+        calls++;
+        return {consumed: s};
+      };
+
+      const s = await recognize(
+        [
+          {
+            matcher,
+            component: ComponentA,
+          },
+        ],
+        '/a/1/b',
+      );
+      const a = s.root.firstChild!;
+      checkActivatedRoute(a, 'a/1/b', {}, ComponentA);
+      expect(calls).toBe(1);
+    });
+
+    it('should use custom path matcher', async () => {
       const matcher = (s: any, g: any, r: any) => {
         if (s[0].path === 'a') {
           return {consumed: s.slice(0, 2), posParams: {id: s[1]}};
@@ -727,109 +730,114 @@ describe('recognize', () => {
         }
       };
 
-      checkRecognize(
-          [{
+      const s = await recognize(
+        [
+          {
             matcher: matcher,
             component: ComponentA,
-            children: [{path: 'b', component: ComponentB}]
-          }] as any,
-          '/a/1;p=99/b', (s: RouterStateSnapshot) => {
-            const a = (s as any).root.firstChild!;
-            checkActivatedRoute(a, 'a/1', {id: '1', p: '99'}, ComponentA);
-            checkActivatedRoute((a as any).firstChild!, 'b', {}, ComponentB);
-          });
+            children: [{path: 'b', component: ComponentB}],
+          },
+        ] as any,
+        '/a/1;p=99/b',
+      );
+      const a = s.root.firstChild!;
+      checkActivatedRoute(a, 'a/1', {id: '1', p: '99'}, ComponentA);
+      checkActivatedRoute(a.firstChild!, 'b', {}, ComponentB);
     });
 
-    it('should work with terminal route', () => {
-      const matcher = (s: any, g: any, r: any) => s.length === 0 ? ({consumed: s}) : null;
+    it('should work with terminal route', async () => {
+      const matcher = (s: any, g: any, r: any) => (s.length === 0 ? {consumed: s} : null);
 
-      checkRecognize([{matcher, component: ComponentA}] as any, '', (s: RouterStateSnapshot) => {
-        const a = (s as any).root.firstChild!;
-        checkActivatedRoute(a, '', {}, ComponentA);
-      });
+      const s = await recognize([{matcher, component: ComponentA}], '');
+      const a = s.root.firstChild!;
+      checkActivatedRoute(a, '', {}, ComponentA);
     });
 
-    it('should work with child terminal route', () => {
-      const matcher = (s: any, g: any, r: any) => s.length === 0 ? ({consumed: s}) : null;
+    it('should work with child terminal route', async () => {
+      const matcher = (s: any, g: any, r: any) => (s.length === 0 ? {consumed: s} : null);
 
-      checkRecognize(
-          [{path: 'a', component: ComponentA, children: [{matcher, component: ComponentB}]}] as any,
-          'a', (s: RouterStateSnapshot) => {
-            const a = (s as any).root.firstChild!;
-            checkActivatedRoute(a, 'a', {}, ComponentA);
-          });
+      const s = await recognize(
+        [{path: 'a', component: ComponentA, children: [{matcher, component: ComponentB}]}],
+        'a',
+      );
+      const a = s.root.firstChild!;
+      checkActivatedRoute(a, 'a', {}, ComponentA);
     });
   });
 
-  describe('query parameters', () => {
-    it('should support query params', () => {
+  describe('query parameters', async () => {
+    it('should support query params', async () => {
       const config = [{path: 'a', component: ComponentA}];
-      checkRecognize(config, 'a?q=11', (s: RouterStateSnapshot) => {
-        expect(s.root.queryParams).toEqual({q: '11'});
-        expect(s.root.queryParamMap.get('q')).toEqual('11');
-      });
+      const s = await recognize(config, 'a?q=11');
+      expect(s.root.queryParams).toEqual({q: '11'});
+      expect(s.root.queryParamMap.get('q')).toEqual('11');
     });
 
-    it('should freeze query params object', () => {
-      checkRecognize([{path: 'a', component: ComponentA}], 'a?q=11', (s: RouterStateSnapshot) => {
-        expect(Object.isFrozen(s.root.queryParams)).toBeTruthy();
-      });
+    it('should freeze query params object', async () => {
+      const s = await recognize([{path: 'a', component: ComponentA}], 'a?q=11');
+      expect(Object.isFrozen(s.root.queryParams)).toBeTruthy();
     });
 
-    it('should not freeze UrlTree query params', () => {
+    it('should not freeze UrlTree query params', async () => {
       const url = tree('a?q=11');
-      recognize(RootComponent, [{path: 'a', component: ComponentA}], url, 'a?q=11')
-          .subscribe((s: RouterStateSnapshot) => {
-            expect(Object.isFrozen(url.queryParams)).toBe(false);
-          });
+      const s = await recognize([{path: 'a', component: ComponentA}], 'a?q=11');
+      expect(Object.isFrozen(url.queryParams)).toBe(false);
     });
   });
 
-  describe('fragment', () => {
-    it('should support fragment', () => {
+  describe('fragment', async () => {
+    it('should support fragment', async () => {
       const config = [{path: 'a', component: ComponentA}];
-      checkRecognize(config, 'a#f1', (s: RouterStateSnapshot) => {
-        expect(s.root.fragment).toEqual('f1');
-      });
+      const s = await recognize(config, 'a#f1');
+      expect(s.root.fragment).toEqual('f1');
     });
   });
 
-  describe('error handling', () => {
-    it('should error when two routes with the same outlet name got matched', () => {
-      recognize(
-          RootComponent,
-          [
-            {path: 'a', component: ComponentA}, {path: 'b', component: ComponentB, outlet: 'aux'},
-            {path: 'c', component: ComponentC, outlet: 'aux'}
-          ],
-          tree('a(aux:b//aux:c)'), 'a(aux:b//aux:c)')
-          .subscribe((_) => {}, (s: RouterStateSnapshot) => {
-            expect(s.toString())
-                .toContain(
-                    'Two segments cannot have the same outlet name: \'aux:b\' and \'aux:c\'.');
-          });
+  describe('guards', () => {
+    it('should run canMatch guards on wildcard routes', async () => {
+      const config = [
+        {path: '**', component: ComponentA, data: {id: 'a'}, canMatch: [() => false]},
+        {path: '**', component: ComponentB, data: {id: 'b'}},
+      ];
+      const s = await recognize(config, 'a');
+      expect(s.root.firstChild!.data['id']).toEqual('b');
     });
   });
 });
 
-function checkRecognize(
-    config: Routes, url: string, callback: any,
-    paramsInheritanceStrategy?: 'emptyOnly'|'always'): void {
-  recognize(RootComponent, config, tree(url), url, paramsInheritanceStrategy)
-      .subscribe(callback, e => {
-        throw e;
-      });
+async function recognize(
+  config: Routes,
+  url: string,
+  paramsInheritanceStrategy: 'emptyOnly' | 'always' = 'emptyOnly',
+): Promise<RouterStateSnapshot> {
+  const serializer = new DefaultUrlSerializer();
+  const result = await new Recognizer(
+    TestBed.inject(EnvironmentInjector),
+    TestBed.inject(RouterConfigLoader),
+    RootComponent,
+    config,
+    tree(url),
+    paramsInheritanceStrategy,
+    serializer,
+  )
+    .recognize()
+    .toPromise();
+  return result!.state;
 }
 
 function checkActivatedRoute(
-    actual: ActivatedRouteSnapshot, url: string, params: Params, cmp: Function,
-    outlet: string = PRIMARY_OUTLET): void {
+  actual: ActivatedRouteSnapshot,
+  url: string,
+  params: Params,
+  cmp: Function | null,
+  outlet: string = PRIMARY_OUTLET,
+): void {
   if (actual === null) {
     expect(actual).not.toBeNull();
   } else {
-    expect(actual.url.map(s => s.path).join('/')).toEqual(url);
+    expect(actual.url.map((s) => s.path).join('/')).toEqual(url);
     expect(actual.params).toEqual(params);
-    expect(actual.component as any).toBe(cmp);
+    expect(actual.component).toBe(cmp);
     expect(actual.outlet).toEqual(outlet);
   }
 }

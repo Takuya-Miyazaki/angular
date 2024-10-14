@@ -3,10 +3,17 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {KeyValueChangeRecord, KeyValueChanges, KeyValueDiffer, KeyValueDiffers, Pipe, PipeTransform} from '@angular/core';
+import {
+  KeyValueChangeRecord,
+  KeyValueChanges,
+  KeyValueDiffer,
+  KeyValueDiffers,
+  Pipe,
+  PipeTransform,
+} from '@angular/core';
 
 function makeKeyValuePair<K, V>(key: K, value: V): KeyValue<K, V> {
   return {key: key, value: value};
@@ -43,64 +50,83 @@ export interface KeyValue<K, V> {
  *
  * @publicApi
  */
-@Pipe({name: 'keyvalue', pure: false})
+@Pipe({
+  name: 'keyvalue',
+  pure: false,
+  standalone: true,
+})
 export class KeyValuePipe implements PipeTransform {
   constructor(private readonly differs: KeyValueDiffers) {}
 
   private differ!: KeyValueDiffer<any, any>;
   private keyValues: Array<KeyValue<any, any>> = [];
+  private compareFn: (a: KeyValue<any, any>, b: KeyValue<any, any>) => number = defaultComparator;
 
-  transform<K, V>(input: null, compareFn?: (a: KeyValue<K, V>, b: KeyValue<K, V>) => number): null;
-  transform<V>(
-      input: {[key: string]: V}|ReadonlyMap<string, V>,
-      compareFn?: (a: KeyValue<string, V>, b: KeyValue<string, V>) => number):
-      Array<KeyValue<string, V>>;
-  transform<V>(
-      input: {[key: string]: V}|ReadonlyMap<string, V>|null,
-      compareFn?: (a: KeyValue<string, V>, b: KeyValue<string, V>) => number):
-      Array<KeyValue<string, V>>|null;
-  transform<V>(
-      input: {[key: number]: V}|ReadonlyMap<number, V>,
-      compareFn?: (a: KeyValue<number, V>, b: KeyValue<number, V>) => number):
-      Array<KeyValue<number, V>>;
-  transform<V>(
-      input: {[key: number]: V}|ReadonlyMap<number, V>|null,
-      compareFn?: (a: KeyValue<number, V>, b: KeyValue<number, V>) => number):
-      Array<KeyValue<number, V>>|null;
+  /*
+   * NOTE: when the `input` value is a simple Record<K, V> object, the keys are extracted with
+   * Object.keys(). This means that even if the `input` type is Record<number, V> the keys are
+   * compared/returned as `string`s.
+   */
   transform<K, V>(
-      input: ReadonlyMap<K, V>,
-      compareFn?: (a: KeyValue<K, V>, b: KeyValue<K, V>) => number): Array<KeyValue<K, V>>;
+    input: ReadonlyMap<K, V>,
+    compareFn?: (a: KeyValue<K, V>, b: KeyValue<K, V>) => number,
+  ): Array<KeyValue<K, V>>;
+  transform<K extends number, V>(
+    input: Record<K, V>,
+    compareFn?: (a: KeyValue<string, V>, b: KeyValue<string, V>) => number,
+  ): Array<KeyValue<string, V>>;
+  transform<K extends string, V>(
+    input: Record<K, V> | ReadonlyMap<K, V>,
+    compareFn?: (a: KeyValue<K, V>, b: KeyValue<K, V>) => number,
+  ): Array<KeyValue<K, V>>;
+  transform(
+    input: null | undefined,
+    compareFn?: (a: KeyValue<unknown, unknown>, b: KeyValue<unknown, unknown>) => number,
+  ): null;
   transform<K, V>(
-      input: ReadonlyMap<K, V>|null,
-      compareFn?: (a: KeyValue<K, V>, b: KeyValue<K, V>) => number): Array<KeyValue<K, V>>|null;
+    input: ReadonlyMap<K, V> | null | undefined,
+    compareFn?: (a: KeyValue<K, V>, b: KeyValue<K, V>) => number,
+  ): Array<KeyValue<K, V>> | null;
+  transform<K extends number, V>(
+    input: Record<K, V> | null | undefined,
+    compareFn?: (a: KeyValue<string, V>, b: KeyValue<string, V>) => number,
+  ): Array<KeyValue<string, V>> | null;
+  transform<K extends string, V>(
+    input: Record<K, V> | ReadonlyMap<K, V> | null | undefined,
+    compareFn?: (a: KeyValue<K, V>, b: KeyValue<K, V>) => number,
+  ): Array<KeyValue<K, V>> | null;
   transform<K, V>(
-      input: null|{[key: string]: V, [key: number]: V}|ReadonlyMap<K, V>,
-      compareFn: (a: KeyValue<K, V>, b: KeyValue<K, V>) => number = defaultComparator):
-      Array<KeyValue<K, V>>|null {
+    input: undefined | null | {[key: string]: V; [key: number]: V} | ReadonlyMap<K, V>,
+    compareFn: (a: KeyValue<K, V>, b: KeyValue<K, V>) => number = defaultComparator,
+  ): Array<KeyValue<K, V>> | null {
     if (!input || (!(input instanceof Map) && typeof input !== 'object')) {
       return null;
     }
 
-    if (!this.differ) {
-      // make a differ for whatever type we've been passed in
-      this.differ = this.differs.find(input).create();
-    }
+    // make a differ for whatever type we've been passed in
+    this.differ ??= this.differs.find(input).create();
 
-    const differChanges: KeyValueChanges<K, V>|null = this.differ.diff(input as any);
+    const differChanges: KeyValueChanges<K, V> | null = this.differ.diff(input as any);
+    const compareFnChanged = compareFn !== this.compareFn;
 
     if (differChanges) {
       this.keyValues = [];
       differChanges.forEachItem((r: KeyValueChangeRecord<K, V>) => {
         this.keyValues.push(makeKeyValuePair(r.key, r.currentValue!));
       });
+    }
+    if (differChanges || compareFnChanged) {
       this.keyValues.sort(compareFn);
+      this.compareFn = compareFn;
     }
     return this.keyValues;
   }
 }
 
 export function defaultComparator<K, V>(
-    keyValueA: KeyValue<K, V>, keyValueB: KeyValue<K, V>): number {
+  keyValueA: KeyValue<K, V>,
+  keyValueB: KeyValue<K, V>,
+): number {
   const a = keyValueA.key;
   const b = keyValueB.key;
   // if same exit with 0;

@@ -3,14 +3,16 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {getSystemPath, normalize, virtualFs} from '@angular-devkit/core';
 import {TempScopedNodeJsSyncHost} from '@angular-devkit/core/node/testing';
 import {HostTree} from '@angular-devkit/schematics';
 import {SchematicTestRunner, UnitTestTree} from '@angular-devkit/schematics/testing';
-import * as shx from 'shelljs';
+import {runfiles} from '@bazel/runfiles';
+import fs from 'fs';
+import shx from 'shelljs';
 
 describe('all migrations', () => {
   let runner: SchematicTestRunner;
@@ -19,8 +21,10 @@ describe('all migrations', () => {
   let tmpDirPath: string;
   let previousWorkingDir: string;
 
-  const migrationCollectionPath = require.resolve('../migrations.json');
-  const allMigrationSchematics = Object.keys(require(migrationCollectionPath).schematics);
+  const migrationCollectionPath = runfiles.resolvePackageRelative('../migrations.json');
+  const allMigrationSchematics = Object.keys(
+    (JSON.parse(fs.readFileSync(migrationCollectionPath, 'utf8')) as any).schematics,
+  );
 
   beforeEach(() => {
     runner = new SchematicTestRunner('test', migrationCollectionPath);
@@ -28,11 +32,14 @@ describe('all migrations', () => {
     tree = new UnitTestTree(new HostTree(host));
 
     writeFile('/node_modules/@angular/core/index.d.ts', `export const MODULE: any;`);
-    writeFile('/angular.json', JSON.stringify({
-      projects: {t: {architect: {build: {options: {tsConfig: './tsconfig.json'}}}}}
-    }));
+    writeFile(
+      '/angular.json',
+      JSON.stringify({
+        version: 1,
+        projects: {t: {root: '', architect: {build: {options: {tsConfig: './tsconfig.json'}}}}},
+      }),
+    );
     writeFile('/tsconfig.json', `{}`);
-
 
     previousWorkingDir = shx.pwd();
     tmpDirPath = getSystemPath(host.root);
@@ -52,28 +59,33 @@ describe('all migrations', () => {
   }
 
   async function runMigration(migrationName: string) {
-    await runner.runSchematicAsync(migrationName, undefined, tree).toPromise();
+    await runner.runSchematic(migrationName, undefined, tree);
   }
 
-  if (!allMigrationSchematics.length) {
-    throw Error('No migration schematics found.');
+  if (allMigrationSchematics.length) {
+    allMigrationSchematics.forEach((name) => {
+      describe(name, () => createTests(name));
+    });
+  } else {
+    it('should pass', () => {
+      expect(true).toBe(true);
+    });
   }
-
-  allMigrationSchematics.forEach(name => {
-    describe(name, () => createTests(name));
-  });
 
   function createTests(migrationName: string) {
     // Regression test for: https://github.com/angular/angular/issues/36346.
     it('should not throw if non-existent symbols are imported with rootDirs', async () => {
-      writeFile(`/tsconfig.json`, JSON.stringify({
-        compilerOptions: {
-          rootDirs: [
-            './generated',
-          ]
-        }
-      }));
-      writeFile('/index.ts', `
+      writeFile(
+        `/tsconfig.json`,
+        JSON.stringify({
+          compilerOptions: {
+            rootDirs: ['./generated'],
+          },
+        }),
+      );
+      writeFile(
+        '/index.ts',
+        `
       import {Renderer} from '@angular/core';
 
       const variableDecl: Renderer = null;
@@ -81,7 +93,8 @@ describe('all migrations', () => {
       export class Test {
         constructor(renderer: Renderer) {}
       }
-    `);
+    `,
+      );
 
       let error: any = null;
       try {

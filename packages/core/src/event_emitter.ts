@@ -3,12 +3,17 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-/// <reference types="rxjs" />
+import {setActiveConsumer} from '@angular/core/primitives/signals';
+import {PartialObserver, Subject, Subscription} from 'rxjs';
 
-import {Subject, Subscription} from 'rxjs';
+import {OutputRef} from './authoring/output/output_ref';
+import {isInInjectionContext} from './di/contextual';
+import {inject} from './di/injector_compatibility';
+import {DestroyRef} from './linker/destroy_ref';
+import {PendingTasksInternal} from './pending_tasks';
 
 /**
  * Use in components with the `@Output` directive to emit custom events
@@ -58,10 +63,9 @@ import {Subject, Subscription} from 'rxjs';
  * <zippy (open)="onOpen($event)" (close)="onClose($event)"></zippy>
  * ```
  *
- * @see [Observables in Angular](guide/observables-in-angular)
  * @publicApi
  */
-export interface EventEmitter<T> extends Subject<T> {
+export interface EventEmitter<T> extends Subject<T>, OutputRef<T> {
   /**
    * @internal
    */
@@ -74,94 +78,106 @@ export interface EventEmitter<T> extends Subject<T> {
    * @param [isAsync=false] When true, deliver events asynchronously.
    *
    */
-  new(isAsync?: boolean): EventEmitter<T>;
+  new (isAsync?: boolean): EventEmitter<T>;
 
   /**
    * Emits an event containing a given value.
    * @param value The value to emit.
    */
   emit(value?: T): void;
+
   /**
    * Registers handlers for events emitted by this instance.
-   * @param generatorOrNext When supplied, a custom handler for emitted events.
-   * @param error When supplied, a custom handler for an error notification
-   * from this emitter.
-   * @param complete When supplied, a custom handler for a completion
-   * notification from this emitter.
+   * @param next When supplied, a custom handler for emitted events.
+   * @param error When supplied, a custom handler for an error notification from this emitter.
+   * @param complete When supplied, a custom handler for a completion notification from this
+   *     emitter.
    */
-  subscribe(generatorOrNext?: any, error?: any, complete?: any): Subscription;
+  subscribe(
+    next?: (value: T) => void,
+    error?: (error: any) => void,
+    complete?: () => void,
+  ): Subscription;
+  /**
+   * Registers handlers for events emitted by this instance.
+   * @param observerOrNext When supplied, a custom handler for emitted events, or an observer
+   *     object.
+   * @param error When supplied, a custom handler for an error notification from this emitter.
+   * @param complete When supplied, a custom handler for a completion notification from this
+   *     emitter.
+   */
+  subscribe(observerOrNext?: any, error?: any, complete?: any): Subscription;
 }
 
-class EventEmitter_ extends Subject<any> {
-  __isAsync: boolean;  // tslint:disable-line
+class EventEmitter_ extends Subject<any> implements OutputRef<any> {
+  __isAsync: boolean; // tslint:disable-line
+  destroyRef: DestroyRef | undefined = undefined;
+  private readonly pendingTasks: PendingTasksInternal | undefined = undefined;
 
   constructor(isAsync: boolean = false) {
     super();
     this.__isAsync = isAsync;
+
+    // Attempt to retrieve a `DestroyRef` and `PendingTasks` optionally.
+    // For backwards compatibility reasons, this cannot be required.
+    if (isInInjectionContext()) {
+      this.destroyRef = inject(DestroyRef, {optional: true}) ?? undefined;
+      this.pendingTasks = inject(PendingTasksInternal, {optional: true}) ?? undefined;
+    }
   }
 
   emit(value?: any) {
-    super.next(value);
+    const prevConsumer = setActiveConsumer(null);
+    try {
+      super.next(value);
+    } finally {
+      setActiveConsumer(prevConsumer);
+    }
   }
 
-  subscribe(generatorOrNext?: any, error?: any, complete?: any): Subscription {
-    let schedulerFn: (t: any) => any;
-    let errorFn = (err: any): any => null;
-    let completeFn = (): any => null;
+  override subscribe(observerOrNext?: any, error?: any, complete?: any): Subscription {
+    let nextFn = observerOrNext;
+    let errorFn = error || (() => null);
+    let completeFn = complete;
 
-    if (generatorOrNext && typeof generatorOrNext === 'object') {
-      schedulerFn = this.__isAsync ? (value: any) => {
-        setTimeout(() => generatorOrNext.next(value));
-      } : (value: any) => {
-        generatorOrNext.next(value);
-      };
+    if (observerOrNext && typeof observerOrNext === 'object') {
+      const observer = observerOrNext as PartialObserver<unknown>;
+      nextFn = observer.next?.bind(observer);
+      errorFn = observer.error?.bind(observer);
+      completeFn = observer.complete?.bind(observer);
+    }
 
-      if (generatorOrNext.error) {
-        errorFn = this.__isAsync ? (err) => {
-          setTimeout(() => generatorOrNext.error(err));
-        } : (err) => {
-          generatorOrNext.error(err);
-        };
+    if (this.__isAsync) {
+      errorFn = this.wrapInTimeout(errorFn);
+
+      if (nextFn) {
+        nextFn = this.wrapInTimeout(nextFn);
       }
 
-      if (generatorOrNext.complete) {
-        completeFn = this.__isAsync ? () => {
-          setTimeout(() => generatorOrNext.complete());
-        } : () => {
-          generatorOrNext.complete();
-        };
-      }
-    } else {
-      schedulerFn = this.__isAsync ? (value: any) => {
-        setTimeout(() => generatorOrNext(value));
-      } : (value: any) => {
-        generatorOrNext(value);
-      };
-
-      if (error) {
-        errorFn = this.__isAsync ? (err) => {
-          setTimeout(() => error(err));
-        } : (err) => {
-          error(err);
-        };
-      }
-
-      if (complete) {
-        completeFn = this.__isAsync ? () => {
-          setTimeout(() => complete());
-        } : () => {
-          complete();
-        };
+      if (completeFn) {
+        completeFn = this.wrapInTimeout(completeFn);
       }
     }
 
-    const sink = super.subscribe(schedulerFn, errorFn, completeFn);
+    const sink = super.subscribe({next: nextFn, error: errorFn, complete: completeFn});
 
-    if (generatorOrNext instanceof Subscription) {
-      generatorOrNext.add(sink);
+    if (observerOrNext instanceof Subscription) {
+      observerOrNext.add(sink);
     }
 
     return sink;
+  }
+
+  private wrapInTimeout(fn: (value: unknown) => any) {
+    return (value: unknown) => {
+      const taskId = this.pendingTasks?.add();
+      setTimeout(() => {
+        fn(value);
+        if (taskId !== undefined) {
+          this.pendingTasks?.remove(taskId);
+        }
+      });
+    };
   }
 }
 
@@ -169,6 +185,7 @@ class EventEmitter_ extends Subject<any> {
  * @publicApi
  */
 export const EventEmitter: {
-  new (isAsync?: boolean): EventEmitter<any>; new<T>(isAsync?: boolean): EventEmitter<T>;
+  new (isAsync?: boolean): EventEmitter<any>;
+  new <T>(isAsync?: boolean): EventEmitter<T>;
   readonly prototype: EventEmitter<any>;
 } = EventEmitter_ as any;

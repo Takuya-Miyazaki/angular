@@ -3,31 +3,38 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import * as ts from 'typescript';
+import ts from 'typescript';
 
-import {NgCompiler, NgCompilerHost} from './core';
+import {
+  CompilationTicket,
+  freshCompilationTicket,
+  incrementalFromStateTicket,
+  NgCompiler,
+  NgCompilerHost,
+} from './core';
 import {NgCompilerOptions, UnifiedModulesHost} from './core/api';
-import {NodeJSFileSystem, setFileSystem} from './file_system';
+import {AbsoluteFsPath, NodeJSFileSystem, resolve, setFileSystem} from './file_system';
 import {PatchedProgramIncrementalBuildStrategy} from './incremental';
-import {NOOP_PERF_RECORDER} from './perf';
+import {ActivePerfRecorder, PerfPhase} from './perf';
+import {TsCreateProgramDriver} from './program_driver';
 import {untagAllTsFiles} from './shims';
-import {ReusedProgramStrategy} from './typecheck/src/augmented_program';
+import {OptimizeFor} from './typecheck/api';
 
 // The following is needed to fix a the chicken-and-egg issue where the sync (into g3) script will
 // refuse to accept this file unless the following string appears:
-// import * as plugin from '@bazel/typescript/internal/tsc_wrapped/plugin_api';
+// import * as plugin from '@bazel/concatjs/internal/tsc_wrapped/plugin_api';
 
 /**
  * A `ts.CompilerHost` which also returns a list of input files, out of which the `ts.Program`
  * should be created.
  *
- * Currently mirrored from @bazel/typescript/internal/tsc_wrapped/plugin_api (with the naming of
+ * Currently mirrored from @bazel/concatjs/internal/tsc_wrapped/plugin_api (with the naming of
  * `fileNameToModuleName` corrected).
  */
-interface PluginCompilerHost extends ts.CompilerHost, Partial<UnifiedModulesHost> {
+export interface PluginCompilerHost extends ts.CompilerHost, Partial<UnifiedModulesHost> {
   readonly inputFiles: ReadonlyArray<string>;
 }
 
@@ -40,12 +47,17 @@ interface TscPlugin {
   readonly name: string;
 
   wrapHost(
-      host: ts.CompilerHost&Partial<UnifiedModulesHost>, inputFiles: ReadonlyArray<string>,
-      options: ts.CompilerOptions): PluginCompilerHost;
+    host: ts.CompilerHost & Partial<UnifiedModulesHost>,
+    inputFiles: ReadonlyArray<string>,
+    options: ts.CompilerOptions,
+  ): PluginCompilerHost;
 
-  setupCompilation(program: ts.Program, oldProgram?: ts.Program): {
-    ignoreForDiagnostics: Set<ts.SourceFile>,
-    ignoreForEmit: Set<ts.SourceFile>,
+  setupCompilation(
+    program: ts.Program,
+    oldProgram?: ts.Program,
+  ): {
+    ignoreForDiagnostics: Set<ts.SourceFile>;
+    ignoreForEmit: Set<ts.SourceFile>;
   };
 
   getDiagnostics(file?: ts.SourceFile): ts.Diagnostic[];
@@ -63,9 +75,9 @@ interface TscPlugin {
 export class NgTscPlugin implements TscPlugin {
   name = 'ngtsc';
 
-  private options: NgCompilerOptions|null = null;
-  private host: NgCompilerHost|null = null;
-  private _compiler: NgCompiler|null = null;
+  private options: NgCompilerOptions | null = null;
+  private host: NgCompilerHost | null = null;
+  private _compiler: NgCompiler | null = null;
 
   get compiler(): NgCompiler {
     if (this._compiler === null) {
@@ -79,8 +91,10 @@ export class NgTscPlugin implements TscPlugin {
   }
 
   wrapHost(
-      host: ts.CompilerHost&Partial<UnifiedModulesHost>, inputFiles: readonly string[],
-      options: ts.CompilerOptions): PluginCompilerHost {
+    host: ts.CompilerHost & Partial<UnifiedModulesHost>,
+    inputFiles: readonly string[],
+    options: ts.CompilerOptions,
+  ): PluginCompilerHost {
     // TODO(alxhub): Eventually the `wrapHost()` API will accept the old `ts.Program` (if one is
     // available). When it does, its `ts.SourceFile`s need to be re-tagged to enable proper
     // incremental compilation.
@@ -89,21 +103,67 @@ export class NgTscPlugin implements TscPlugin {
     return this.host;
   }
 
-  setupCompilation(program: ts.Program, oldProgram?: ts.Program): {
-    ignoreForDiagnostics: Set<ts.SourceFile>,
-    ignoreForEmit: Set<ts.SourceFile>,
+  setupCompilation(
+    program: ts.Program,
+    oldProgram?: ts.Program,
+  ): {
+    ignoreForDiagnostics: Set<ts.SourceFile>;
+    ignoreForEmit: Set<ts.SourceFile>;
   } {
+    // TODO(alxhub): we provide a `PerfRecorder` to the compiler, but because we're not driving the
+    // compilation, the information captured within it is incomplete, and may not include timings
+    // for phases such as emit.
+    //
+    // Additionally, nothing actually captures the perf results here, so recording stats at all is
+    // somewhat moot for now :)
+    const perfRecorder = ActivePerfRecorder.zeroedToNow();
     if (this.host === null || this.options === null) {
       throw new Error('Lifecycle error: setupCompilation() before wrapHost().');
     }
     this.host.postProgramCreationCleanup();
-    untagAllTsFiles(program);
-    const typeCheckStrategy = new ReusedProgramStrategy(
-        program, this.host, this.options, this.host.shimExtensionPrefixes);
-    this._compiler = new NgCompiler(
-        this.host, this.options, program, typeCheckStrategy,
-        new PatchedProgramIncrementalBuildStrategy(), /** enableTemplateTypeChecker */ false,
-        oldProgram, NOOP_PERF_RECORDER);
+    const programDriver = new TsCreateProgramDriver(
+      program,
+      this.host,
+      this.options,
+      this.host.shimExtensionPrefixes,
+    );
+    const strategy = new PatchedProgramIncrementalBuildStrategy();
+    const oldState = oldProgram !== undefined ? strategy.getIncrementalState(oldProgram) : null;
+    let ticket: CompilationTicket;
+
+    const modifiedResourceFiles = new Set<AbsoluteFsPath>();
+    if (this.host.getModifiedResourceFiles !== undefined) {
+      for (const resourceFile of this.host.getModifiedResourceFiles() ?? []) {
+        modifiedResourceFiles.add(resolve(resourceFile));
+      }
+    }
+
+    if (oldProgram === undefined || oldState === null) {
+      ticket = freshCompilationTicket(
+        program,
+        this.options,
+        strategy,
+        programDriver,
+        perfRecorder,
+        /* enableTemplateTypeChecker */ false,
+        /* usePoisonedData */ false,
+      );
+    } else {
+      strategy.toNextBuildStrategy().getIncrementalState(oldProgram);
+      ticket = incrementalFromStateTicket(
+        oldProgram,
+        oldState,
+        program,
+        this.options,
+        strategy,
+        programDriver,
+        modifiedResourceFiles,
+        perfRecorder,
+        false,
+        false,
+      );
+    }
+    this._compiler = NgCompiler.fromTicket(ticket, this.host);
     return {
       ignoreForDiagnostics: this._compiler.ignoreForDiagnostics,
       ignoreForEmit: this._compiler.ignoreForEmit,
@@ -111,7 +171,10 @@ export class NgTscPlugin implements TscPlugin {
   }
 
   getDiagnostics(file?: ts.SourceFile): ts.Diagnostic[] {
-    return this.compiler.getDiagnostics(file);
+    if (file === undefined) {
+      return this.compiler.getDiagnostics();
+    }
+    return this.compiler.getDiagnosticsForFile(file, OptimizeFor.WholeProgram);
   }
 
   getOptionDiagnostics(): ts.Diagnostic[] {
@@ -119,10 +182,13 @@ export class NgTscPlugin implements TscPlugin {
   }
 
   getNextProgram(): ts.Program {
-    return this.compiler.getNextProgram();
+    return this.compiler.getCurrentProgram();
   }
 
   createTransformers(): ts.CustomTransformers {
+    // The plugin consumer doesn't know about our perf tracing system, so we consider the emit phase
+    // as beginning now.
+    this.compiler.perfRecorder.phase(PerfPhase.TypeScriptEmit);
     return this.compiler.prepareEmit().transformers;
   }
 }

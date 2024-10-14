@@ -3,14 +3,12 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
-import {AnimationPlayer} from '@angular/animations';
+import {AnimationPlayer, ɵStyleDataMap} from '@angular/animations';
 
 import {computeStyle} from '../../util';
 import {SpecialCasedStyles} from '../special_cased_styles';
-
-import {DOMAnimation} from './dom_animation';
 
 export class WebAnimationsPlayer implements AnimationPlayer {
   private _onDoneFns: Function[] = [];
@@ -22,20 +20,27 @@ export class WebAnimationsPlayer implements AnimationPlayer {
   private _finished = false;
   private _started = false;
   private _destroyed = false;
-  // TODO(issue/24571): remove '!'.
-  private _finalKeyframe!: {[key: string]: string|number};
+  private _finalKeyframe?: ɵStyleDataMap;
 
-  // TODO(issue/24571): remove '!'.
-  public readonly domPlayer!: DOMAnimation;
+  // the following original fns are persistent copies of the _onStartFns and _onDoneFns
+  // and are used to reset the fns to their original values upon reset()
+  // (since the _onStartFns and _onDoneFns get deleted after they are called)
+  private _originalOnDoneFns: Function[] = [];
+  private _originalOnStartFns: Function[] = [];
+
+  // using non-null assertion because it's re(set) by init();
+  public readonly domPlayer!: Animation;
   public time = 0;
 
-  public parentPlayer: AnimationPlayer|null = null;
-  public currentSnapshot: {[styleName: string]: string|number} = {};
+  public parentPlayer: AnimationPlayer | null = null;
+  public currentSnapshot: ɵStyleDataMap = new Map();
 
   constructor(
-      public element: any, public keyframes: {[key: string]: string|number}[],
-      public options: {[key: string]: string|number},
-      private _specialStyles?: SpecialCasedStyles|null) {
+    public element: any,
+    public keyframes: Array<ɵStyleDataMap>,
+    public options: {[key: string]: string | number},
+    private _specialStyles?: SpecialCasedStyles | null,
+  ) {
     this._duration = <number>options['duration'];
     this._delay = <number>options['delay'] || 0;
     this.time = this._duration + this._delay;
@@ -44,7 +49,7 @@ export class WebAnimationsPlayer implements AnimationPlayer {
   private _onFinish() {
     if (!this._finished) {
       this._finished = true;
-      this._onDoneFns.forEach(fn => fn());
+      this._onDoneFns.forEach((fn) => fn());
       this._onDoneFns = [];
     }
   }
@@ -59,10 +64,17 @@ export class WebAnimationsPlayer implements AnimationPlayer {
     this._initialized = true;
 
     const keyframes = this.keyframes;
-    (this as {domPlayer: DOMAnimation}).domPlayer =
-        this._triggerWebAnimation(this.element, keyframes, this.options);
-    this._finalKeyframe = keyframes.length ? keyframes[keyframes.length - 1] : {};
-    this.domPlayer.addEventListener('finish', () => this._onFinish());
+    // @ts-expect-error overwriting a readonly property
+    this.domPlayer = this._triggerWebAnimation(this.element, keyframes, this.options);
+    this._finalKeyframe = keyframes.length ? keyframes[keyframes.length - 1] : new Map();
+    const onFinish = () => this._onFinish();
+    this.domPlayer.addEventListener('finish', onFinish);
+    this.onDestroy(() => {
+      // We must remove the `finish` event listener once an animation has completed all its
+      // iterations. This action is necessary to prevent a memory leak since the listener captures
+      // `this`, creating a closure that prevents `this` from being garbage collected.
+      this.domPlayer.removeEventListener('finish', onFinish);
+    });
   }
 
   private _preparePlayerBeforeStart() {
@@ -74,18 +86,30 @@ export class WebAnimationsPlayer implements AnimationPlayer {
     }
   }
 
+  private _convertKeyframesToObject(keyframes: Array<ɵStyleDataMap>): any[] {
+    const kfs: any[] = [];
+    keyframes.forEach((frame) => {
+      kfs.push(Object.fromEntries(frame));
+    });
+    return kfs;
+  }
+
   /** @internal */
-  _triggerWebAnimation(element: any, keyframes: any[], options: any): DOMAnimation {
-    // jscompiler doesn't seem to know animate is a native property because it's not fully
-    // supported yet across common browsers (we polyfill it for Edge/Safari) [CL #143630929]
-    return element['animate'](keyframes, options) as DOMAnimation;
+  _triggerWebAnimation(
+    element: HTMLElement,
+    keyframes: Array<ɵStyleDataMap>,
+    options: any,
+  ): Animation {
+    return element.animate(this._convertKeyframesToObject(keyframes), options);
   }
 
   onStart(fn: () => void): void {
+    this._originalOnStartFns.push(fn);
     this._onStartFns.push(fn);
   }
 
   onDone(fn: () => void): void {
+    this._originalOnDoneFns.push(fn);
     this._onDoneFns.push(fn);
   }
 
@@ -96,7 +120,7 @@ export class WebAnimationsPlayer implements AnimationPlayer {
   play(): void {
     this._buildPlayer();
     if (!this.hasStarted()) {
-      this._onStartFns.forEach(fn => fn());
+      this._onStartFns.forEach((fn) => fn());
       this._onStartFns = [];
       this._started = true;
       if (this._specialStyles) {
@@ -125,6 +149,8 @@ export class WebAnimationsPlayer implements AnimationPlayer {
     this._destroyed = false;
     this._finished = false;
     this._started = false;
+    this._onStartFns = this._originalOnStartFns;
+    this._onDoneFns = this._originalOnDoneFns;
   }
 
   private _resetDomPlayerState() {
@@ -150,17 +176,21 @@ export class WebAnimationsPlayer implements AnimationPlayer {
       if (this._specialStyles) {
         this._specialStyles.destroy();
       }
-      this._onDestroyFns.forEach(fn => fn());
+      this._onDestroyFns.forEach((fn) => fn());
       this._onDestroyFns = [];
     }
   }
 
   setPosition(p: number): void {
+    if (this.domPlayer === undefined) {
+      this.init();
+    }
     this.domPlayer.currentTime = p * this.time;
   }
 
   getPosition(): number {
-    return this.domPlayer.currentTime / this.time;
+    // tsc is complaining with TS2362 without the conversion to number
+    return +(this.domPlayer.currentTime ?? 0) / this.time;
   }
 
   get totalTime(): number {
@@ -168,22 +198,26 @@ export class WebAnimationsPlayer implements AnimationPlayer {
   }
 
   beforeDestroy() {
-    const styles: {[key: string]: string|number} = {};
+    const styles: ɵStyleDataMap = new Map();
     if (this.hasStarted()) {
-      Object.keys(this._finalKeyframe).forEach(prop => {
-        if (prop != 'offset') {
-          styles[prop] =
-              this._finished ? this._finalKeyframe[prop] : computeStyle(this.element, prop);
+      // note: this code is invoked only when the `play` function was called prior to this
+      // (thus `hasStarted` returns true), this implies that the code that initializes
+      // `_finalKeyframe` has also been executed and the non-null assertion can be safely used here
+      const finalKeyframe = this._finalKeyframe!;
+      finalKeyframe.forEach((val, prop) => {
+        if (prop !== 'offset') {
+          styles.set(prop, this._finished ? val : computeStyle(this.element, prop));
         }
       });
     }
+
     this.currentSnapshot = styles;
   }
 
   /** @internal */
   triggerCallback(phaseName: string): void {
-    const methods = phaseName == 'start' ? this._onStartFns : this._onDoneFns;
-    methods.forEach(fn => fn());
+    const methods = phaseName === 'start' ? this._onStartFns : this._onDoneFns;
+    methods.forEach((fn) => fn());
     methods.length = 0;
   }
 }

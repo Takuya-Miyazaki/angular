@@ -3,27 +3,21 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 import {AnimationTimelineInstruction} from './animation_timeline_instruction';
 
 export class ElementInstructionMap {
   private _map = new Map<any, AnimationTimelineInstruction[]>();
 
-  consume(element: any): AnimationTimelineInstruction[] {
-    let instructions = this._map.get(element);
-    if (instructions) {
-      this._map.delete(element);
-    } else {
-      instructions = [];
-    }
-    return instructions;
+  get(element: any): AnimationTimelineInstruction[] {
+    return this._map.get(element) || [];
   }
 
   append(element: any, instructions: AnimationTimelineInstruction[]) {
     let existingInstructions = this._map.get(element);
     if (!existingInstructions) {
-      this._map.set(element, existingInstructions = []);
+      this._map.set(element, (existingInstructions = []));
     }
     existingInstructions.push(...instructions);
   }

@@ -3,34 +3,35 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {AST, Lexer, Parser, RecursiveAstVisitor} from '@angular/compiler';
-import {ImplicitReceiver, MethodCall, PropertyRead} from '@angular/compiler/src/compiler';
+import {Call, ImplicitReceiver, PropertyRead} from '@angular/compiler/src/compiler';
 
 describe('RecursiveAstVisitor', () => {
   it('should visit every node', () => {
     const parser = new Parser(new Lexer());
-    const ast = parser.parseBinding('x.y()', null /* location */, 0 /* absoluteOffset */);
+    const ast = parser.parseBinding('x.y()', '', 0 /* absoluteOffset */);
     const visitor = new Visitor();
     const path: AST[] = [];
     visitor.visit(ast.ast, path);
     // If the visitor method of RecursiveAstVisitor is implemented correctly,
     // then we should have collected the full path from root to leaf.
-    expect(path.length).toBe(3);
-    const [methodCall, propertyRead, implicitReceiver] = path;
-    expectType(methodCall, MethodCall);
-    expectType(propertyRead, PropertyRead);
+    expect(path.length).toBe(4);
+    const [call, yRead, xRead, implicitReceiver] = path;
+    expectType(call, Call);
+    expectType(yRead, PropertyRead);
+    expectType(xRead, PropertyRead);
     expectType(implicitReceiver, ImplicitReceiver);
-    expect(methodCall.name).toBe('y');
-    expect(methodCall.args).toEqual([]);
-    expect(propertyRead.name).toBe('x');
+    expect(xRead.name).toBe('x');
+    expect(yRead.name).toBe('y');
+    expect(call.args).toEqual([]);
   });
 });
 
 class Visitor extends RecursiveAstVisitor {
-  visit(node: AST, path: AST[]) {
+  override visit(node: AST, path: AST[]) {
     path.push(node);
     node.visit(this, path);
   }

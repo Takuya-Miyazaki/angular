@@ -3,47 +3,44 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {assertEqual, assertLessThanOrEqual} from './assert';
 
 /**
- * Equivalent to ES6 spread, add each item to an array.
+ * Determines if the contents of two arrays is identical
  *
- * @param items The items to add
- * @param arr The array to which you want to add the items
+ * @param a first array
+ * @param b second array
+ * @param identityAccessor Optional function for extracting stable object identity from a value in
+ *     the array.
  */
-export function addAllToArray(items: any[], arr: any[]) {
-  for (let i = 0; i < items.length; i++) {
-    arr.push(items[i]);
+export function arrayEquals<T>(a: T[], b: T[], identityAccessor?: (value: T) => unknown): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    let valueA = a[i];
+    let valueB = b[i];
+    if (identityAccessor) {
+      valueA = identityAccessor(valueA) as any;
+      valueB = identityAccessor(valueB) as any;
+    }
+    if (valueB !== valueA) {
+      return false;
+    }
   }
+  return true;
 }
 
 /**
  * Flattens an array.
  */
-export function flatten(list: any[], dst?: any[]): any[] {
-  if (dst === undefined) dst = list;
-  for (let i = 0; i < list.length; i++) {
-    let item = list[i];
-    if (Array.isArray(item)) {
-      // we need to inline it.
-      if (dst === list) {
-        // Our assumption that the list was already flat was wrong and
-        // we need to clone flat since we need to write to it.
-        dst = list.slice(0, i);
-      }
-      flatten(item, dst);
-    } else if (dst !== list) {
-      dst.push(item);
-    }
-  }
-  return dst;
+export function flatten(list: any[]): any[] {
+  return list.flat(Number.POSITIVE_INFINITY);
 }
 
-export function deepForEach<T>(input: (T|any[])[], fn: (value: T) => void): void {
-  input.forEach(value => Array.isArray(value) ? deepForEach(value, fn) : fn(value));
+export function deepForEach<T>(input: (T | any[])[], fn: (value: T) => void): void {
+  input.forEach((value) => (Array.isArray(value) ? deepForEach(value, fn) : fn(value)));
 }
 
 export function addToArray(arr: any[], index: number, value: any): void {
@@ -94,7 +91,7 @@ export function arraySplice(array: any[], index: number, count: number): void {
     index++;
   }
   while (count--) {
-    array.pop();  // shrink the array
+    array.pop(); // shrink the array
   }
 }
 
@@ -110,7 +107,7 @@ export function arraySplice(array: any[], index: number, count: number): void {
  * @param value Value to add to array.
  */
 export function arrayInsert(array: any[], index: number, value: any): void {
-  ngDevMode && assertLessThanOrEqual(index, array.length, 'Can\'t insert past array end.');
+  ngDevMode && assertLessThanOrEqual(index, array.length, "Can't insert past array end.");
   let end = array.length;
   while (end > index) {
     const previousEnd = end - 1;
@@ -133,7 +130,7 @@ export function arrayInsert(array: any[], index: number, value: any): void {
  * @param value2 Value to add to array.
  */
 export function arrayInsert2(array: any[], index: number, value1: any, value2: any): void {
-  ngDevMode && assertLessThanOrEqual(index, array.length, 'Can\'t insert past array end.');
+  ngDevMode && assertLessThanOrEqual(index, array.length, "Can't insert past array end.");
   let end = array.length;
   if (end == index) {
     // inserting at the end.
@@ -156,49 +153,6 @@ export function arrayInsert2(array: any[], index: number, value1: any, value2: a
 }
 
 /**
- * Insert a `value` into an `array` so that the array remains sorted.
- *
- * NOTE:
- * - Duplicates are not allowed, and are ignored.
- * - This uses binary search algorithm for fast inserts.
- *
- * @param array A sorted array to insert into.
- * @param value The value to insert.
- * @returns index of the inserted value.
- */
-export function arrayInsertSorted(array: string[], value: string): number {
-  let index = arrayIndexOfSorted(array, value);
-  if (index < 0) {
-    // if we did not find it insert it.
-    index = ~index;
-    arrayInsert(array, index, value);
-  }
-  return index;
-}
-
-/**
- * Remove `value` from a sorted `array`.
- *
- * NOTE:
- * - This uses binary search algorithm for fast removals.
- *
- * @param array A sorted array to remove from.
- * @param value The value to remove.
- * @returns index of the removed value.
- *   - positive index if value found and removed.
- *   - negative index if value not found. (`~index` to get the value where it should have been
- *     inserted)
- */
-export function arrayRemoveSorted(array: string[], value: string): number {
-  const index = arrayIndexOfSorted(array, value);
-  if (index >= 0) {
-    arraySplice(array, index, 1);
-  }
-  return index;
-}
-
-
-/**
  * Get an index of an `value` in a sorted `array`.
  *
  * NOTE:
@@ -215,7 +169,6 @@ export function arrayIndexOfSorted(array: string[], value: string): number {
   return _arrayIndexOfSorted(array, value, 0);
 }
 
-
 /**
  * `KeyValueArray` is an array where even positions contain keys and odd positions contain values.
  *
@@ -228,7 +181,7 @@ export function arrayIndexOfSorted(array: string[], value: string): number {
  *
  * See: `keyValueArraySet`, `keyValueArrayGet`, `keyValueArrayIndexOf`, `keyValueArrayDelete`.
  */
-export interface KeyValueArray<VALUE> extends Array<VALUE|string> {
+export interface KeyValueArray<VALUE> extends Array<VALUE | string> {
   __brand__: 'array-map';
 }
 
@@ -241,7 +194,10 @@ export interface KeyValueArray<VALUE> extends Array<VALUE|string> {
  * @returns index (always even) of where the value vas set.
  */
 export function keyValueArraySet<V>(
-    keyValueArray: KeyValueArray<V>, key: string, value: V): number {
+  keyValueArray: KeyValueArray<V>,
+  key: string,
+  value: V,
+): number {
   let index = keyValueArrayIndexOf(keyValueArray, key);
   if (index >= 0) {
     // if we found it set it.
@@ -260,7 +216,7 @@ export function keyValueArraySet<V>(
  * @param key The key to locate.
  * @return The `value` stored at the `key` location or `undefined if not found.
  */
-export function keyValueArrayGet<V>(keyValueArray: KeyValueArray<V>, key: string): V|undefined {
+export function keyValueArrayGet<V>(keyValueArray: KeyValueArray<V>, key: string): V | undefined {
   const index = keyValueArrayIndexOf(keyValueArray, key);
   if (index >= 0) {
     // if we found it retrieve it.
@@ -302,7 +258,6 @@ export function keyValueArrayDelete<V>(keyValueArray: KeyValueArray<V>, key: str
   return index;
 }
 
-
 /**
  * INTERNAL: Get an index of an `value` in a sorted `array` by grouping search by `shift`.
  *
@@ -325,14 +280,14 @@ function _arrayIndexOfSorted(array: string[], value: string, shift: number): num
   let start = 0;
   let end = array.length >> shift;
   while (end !== start) {
-    const middle = start + ((end - start) >> 1);  // find the middle.
+    const middle = start + ((end - start) >> 1); // find the middle.
     const current = array[middle << shift];
     if (value === current) {
-      return (middle << shift);
+      return middle << shift;
     } else if (current > value) {
       end = middle;
     } else {
-      start = middle + 1;  // We already searched middle so make it non-inclusive by adding 1
+      start = middle + 1; // We already searched middle so make it non-inclusive by adding 1
     }
   }
   return ~(end << shift);

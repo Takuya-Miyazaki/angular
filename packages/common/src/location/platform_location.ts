@@ -3,10 +3,11 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {Inject, Injectable, InjectionToken, ɵɵinject} from '@angular/core';
+import {inject, Injectable, InjectionToken} from '@angular/core';
+
 import {getDOM} from '../dom_adapter';
 import {DOCUMENT} from '../dom_tokens';
 
@@ -32,16 +33,18 @@ import {DOCUMENT} from '../dom_tokens';
  *
  * @publicApi
  */
-@Injectable({
-  providedIn: 'platform',
-  // See #23917
-  useFactory: useBrowserPlatformLocation
-})
+@Injectable({providedIn: 'platform', useFactory: () => inject(BrowserPlatformLocation)})
 export abstract class PlatformLocation {
   abstract getBaseHrefFromDOM(): string;
   abstract getState(): unknown;
-  abstract onPopState(fn: LocationChangeListener): void;
-  abstract onHashChange(fn: LocationChangeListener): void;
+  /**
+   * Returns a function that, when executed, removes the `popstate` event handler.
+   */
+  abstract onPopState(fn: LocationChangeListener): VoidFunction;
+  /**
+   * Returns a function that, when executed, removes the `hashchange` event handler.
+   */
+  abstract onHashChange(fn: LocationChangeListener): VoidFunction;
 
   abstract get href(): string;
   abstract get protocol(): string;
@@ -58,10 +61,10 @@ export abstract class PlatformLocation {
   abstract forward(): void;
 
   abstract back(): void;
-}
 
-export function useBrowserPlatformLocation() {
-  return ɵɵinject(BrowserPlatformLocation);
+  historyGo?(relativePosition: number): void {
+    throw new Error(ngDevMode ? 'Not implemented' : '');
+  }
 }
 
 /**
@@ -70,7 +73,9 @@ export function useBrowserPlatformLocation() {
  *
  * @publicApi
  */
-export const LOCATION_INITIALIZED = new InjectionToken<Promise<any>>('Location Initialized');
+export const LOCATION_INITIALIZED = new InjectionToken<Promise<any>>(
+  ngDevMode ? 'Location Initialized' : '',
+);
 
 /**
  * @description
@@ -90,103 +95,90 @@ export interface LocationChangeListener {
   (event: LocationChangeEvent): any;
 }
 
-
-
 /**
  * `PlatformLocation` encapsulates all of the direct calls to platform APIs.
  * This class should not be used directly by an application developer. Instead, use
  * {@link Location}.
+ *
+ * @publicApi
  */
 @Injectable({
   providedIn: 'platform',
-  // See #23917
-  useFactory: createBrowserPlatformLocation,
+  useFactory: () => new BrowserPlatformLocation(),
 })
 export class BrowserPlatformLocation extends PlatformLocation {
-  public readonly location!: Location;
-  private _history!: History;
+  private _location: Location;
+  private _history: History;
+  private _doc = inject(DOCUMENT);
 
-  constructor(@Inject(DOCUMENT) private _doc: any) {
+  constructor() {
     super();
-    this._init();
+    this._location = window.location;
+    this._history = window.history;
   }
 
-  // This is moved to its own method so that `MockPlatformLocationStrategy` can overwrite it
-  /** @internal */
-  _init() {
-    (this as {location: Location}).location = getDOM().getLocation();
-    this._history = getDOM().getHistory();
-  }
-
-  getBaseHrefFromDOM(): string {
+  override getBaseHrefFromDOM(): string {
     return getDOM().getBaseHref(this._doc)!;
   }
 
-  onPopState(fn: LocationChangeListener): void {
-    getDOM().getGlobalEventTarget(this._doc, 'window').addEventListener('popstate', fn, false);
+  override onPopState(fn: LocationChangeListener): VoidFunction {
+    const window = getDOM().getGlobalEventTarget(this._doc, 'window');
+    window.addEventListener('popstate', fn, false);
+    return () => window.removeEventListener('popstate', fn);
   }
 
-  onHashChange(fn: LocationChangeListener): void {
-    getDOM().getGlobalEventTarget(this._doc, 'window').addEventListener('hashchange', fn, false);
+  override onHashChange(fn: LocationChangeListener): VoidFunction {
+    const window = getDOM().getGlobalEventTarget(this._doc, 'window');
+    window.addEventListener('hashchange', fn, false);
+    return () => window.removeEventListener('hashchange', fn);
   }
 
-  get href(): string {
-    return this.location.href;
+  override get href(): string {
+    return this._location.href;
   }
-  get protocol(): string {
-    return this.location.protocol;
+  override get protocol(): string {
+    return this._location.protocol;
   }
-  get hostname(): string {
-    return this.location.hostname;
+  override get hostname(): string {
+    return this._location.hostname;
   }
-  get port(): string {
-    return this.location.port;
+  override get port(): string {
+    return this._location.port;
   }
-  get pathname(): string {
-    return this.location.pathname;
+  override get pathname(): string {
+    return this._location.pathname;
   }
-  get search(): string {
-    return this.location.search;
+  override get search(): string {
+    return this._location.search;
   }
-  get hash(): string {
-    return this.location.hash;
+  override get hash(): string {
+    return this._location.hash;
   }
-  set pathname(newPath: string) {
-    this.location.pathname = newPath;
-  }
-
-  pushState(state: any, title: string, url: string): void {
-    if (supportsState()) {
-      this._history.pushState(state, title, url);
-    } else {
-      this.location.hash = url;
-    }
+  override set pathname(newPath: string) {
+    this._location.pathname = newPath;
   }
 
-  replaceState(state: any, title: string, url: string): void {
-    if (supportsState()) {
-      this._history.replaceState(state, title, url);
-    } else {
-      this.location.hash = url;
-    }
+  override pushState(state: any, title: string, url: string): void {
+    this._history.pushState(state, title, url);
   }
 
-  forward(): void {
+  override replaceState(state: any, title: string, url: string): void {
+    this._history.replaceState(state, title, url);
+  }
+
+  override forward(): void {
     this._history.forward();
   }
 
-  back(): void {
+  override back(): void {
     this._history.back();
   }
 
-  getState(): unknown {
+  override historyGo(relativePosition: number = 0): void {
+    this._history.go(relativePosition);
+  }
+
+  override getState(): unknown {
     return this._history.state;
   }
-}
-
-export function supportsState(): boolean {
-  return !!window.history.pushState;
-}
-export function createBrowserPlatformLocation() {
-  return new BrowserPlatformLocation(ɵɵinject(DOCUMENT));
 }

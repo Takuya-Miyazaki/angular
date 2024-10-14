@@ -3,7 +3,7 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {Component, Input, NgModule} from '@angular/core';
@@ -18,11 +18,14 @@ function createTreeComponent(level: number, isLeaf: boolean) {
   const nextTreeEl = `tree${level + 1}`;
   let template = `<span [style.backgroundColor]="bgColor"> {{data.value}} </span>`;
   if (!isLeaf) {
-    template += `<${nextTreeEl} [data]='data.right'></${nextTreeEl}><${
-        nextTreeEl} [data]='data.left'></${nextTreeEl}>`;
+    template += `<${nextTreeEl} [data]='data.right'></${nextTreeEl}><${nextTreeEl} [data]='data.left'></${nextTreeEl}>`;
   }
 
-  @Component({selector: `tree${level}`, template: template})
+  @Component({
+    selector: `tree${level}`,
+    template: template,
+    standalone: false,
+  })
   class TreeComponent {
     @Input() data: TreeNode;
     get bgColor() {
@@ -33,12 +36,16 @@ function createTreeComponent(level: number, isLeaf: boolean) {
   return TreeComponent;
 }
 
-@Component({selector: 'tree', template: `<tree0 *ngIf="data.left != null" [data]='data'></tree0>`})
+@Component({
+  selector: 'tree',
+  template: `<tree0 *ngIf="data.left != null" [data]="data"></tree0>`,
+  standalone: false,
+})
 export class RootTreeComponent {
   @Input() data: TreeNode = emptyTree;
 }
 
-function createModule(): any {
+export function createAppModule(): any {
   const components: any[] = [RootTreeComponent];
   for (let i = 0; i <= getMaxDepth(); i++) {
     components.push(createTreeComponent(i, i === getMaxDepth()));
@@ -54,5 +61,3 @@ function createModule(): any {
 
   return AppModule;
 }
-
-export const AppModule = createModule();

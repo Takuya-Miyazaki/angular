@@ -3,11 +3,10 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import * as ts from 'typescript';
-
+import ts from 'typescript';
 
 export interface Symbol {
   name: string;
@@ -28,8 +27,10 @@ export class SymbolExtractor {
       // Left for easier debugging.
       // console.log('>>>', ts.SyntaxKind[child.kind]);
       switch (child.kind) {
+        case ts.SyntaxKind.ArrowFunction:
         case ts.SyntaxKind.FunctionExpression:
           fnRecurseDepth++;
+          // Handles IIFE function/arrow expressions.
           if (fnRecurseDepth <= 1) {
             ts.forEachChild(child, visitor);
           }
@@ -47,11 +48,11 @@ export class SymbolExtractor {
           break;
         case ts.SyntaxKind.VariableDeclaration:
           const varDecl = child as ts.VariableDeclaration;
-          if (varDecl.initializer && fnRecurseDepth !== 0) {
+          // Terser optimizes variable declarations with `undefined` as initializer
+          // by omitting the initializer completely. We capture such declarations as well.
+          // https://github.com/terser/terser/blob/86ea74d5c12ae51b64468/CHANGELOG.md#v540.
+          if (fnRecurseDepth !== 0) {
             symbols.push({name: stripSuffix(varDecl.name.getText())});
-          }
-          if (fnRecurseDepth == 0 && isRollupExportSymbol(varDecl)) {
-            ts.forEachChild(child, visitor);
           }
           break;
         case ts.SyntaxKind.FunctionDeclaration:
@@ -63,8 +64,8 @@ export class SymbolExtractor {
           classDecl.name && symbols.push({name: stripSuffix(classDecl.name.getText())});
           break;
         default:
-          // Left for easier debugging.
-          // console.log('###', ts.SyntaxKind[child.kind], child.getText());
+        // Left for easier debugging.
+        // console.log('###', ts.SyntaxKind[child.kind], child.getText());
       }
     }
     visitor(source);
@@ -72,16 +73,16 @@ export class SymbolExtractor {
     return symbols;
   }
 
-  static diff(actual: Symbol[], expected: string|((Symbol | string)[])): {[name: string]: number} {
+  static diff(actual: Symbol[], expected: string | (Symbol | string)[]): {[name: string]: number} {
     if (typeof expected == 'string') {
-      expected = JSON.parse(expected);
+      expected = JSON.parse(expected) as string[];
     }
     const diff: {[name: string]: number} = {};
 
     // All symbols in the golden file start out with a count corresponding to the number of symbols
     // with that name. Once they are matched with symbols in the actual output, the count should
     // even out to 0.
-    (expected as (Symbol | string)[]).forEach((nameOrSymbol) => {
+    expected.forEach((nameOrSymbol) => {
       const symbolName = typeof nameOrSymbol == 'string' ? nameOrSymbol : nameOrSymbol.name;
       diff[symbolName] = (diff[symbolName] || 0) + 1;
     });
@@ -96,16 +97,18 @@ export class SymbolExtractor {
     return diff;
   }
 
-
-  constructor(private path: string, private contents: string) {
+  constructor(
+    private path: string,
+    private contents: string,
+  ) {
     this.actual = SymbolExtractor.parse(path, contents);
   }
 
-  expect(expectedSymbols: (string|Symbol)[]) {
+  expect(expectedSymbols: (string | Symbol)[]) {
     expect(SymbolExtractor.diff(this.actual, expectedSymbols)).toEqual({});
   }
 
-  compareAndPrintError(goldenFilePath: string, expected: string|((Symbol | string)[])): boolean {
+  compareAndPrintError(goldenFilePath: string, expected: string | (Symbol | string)[]): boolean {
     let passed = true;
     const diff = SymbolExtractor.diff(this.actual, expected);
     Object.keys(diff).forEach((key) => {
@@ -125,15 +128,4 @@ export class SymbolExtractor {
 function stripSuffix(text: string): string {
   const index = text.lastIndexOf('$');
   return index > -1 ? text.substring(0, index) : text;
-}
-
-/**
- * Detects if VariableDeclarationList is format `var ..., bundle = function(){}()`;
- *
- * Rollup produces this format when it wants to export symbols from a bundle.
- * @param child
- */
-function isRollupExportSymbol(decl: ts.VariableDeclaration): boolean {
-  return !!(decl.initializer && decl.initializer.kind == ts.SyntaxKind.CallExpression) &&
-      ts.isIdentifier(decl.name) && decl.name.text === 'bundle';
 }

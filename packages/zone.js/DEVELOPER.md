@@ -1,6 +1,8 @@
 To run tests
 ------------
 
+*Note*: some of these tests no longer run. Be sure to check that CI is green.
+
 Make sure your environment is set up with:
 
 `yarn`
@@ -21,7 +23,7 @@ Run tslint:
 
 `yarn lint`
 
-Run format with clang-format:
+Run format with prettier:
 
 `yarn format`
 
@@ -35,7 +37,7 @@ Before Commit
 Please make sure you pass all following checks before commit
 
 - yarn gulp lint (tslint)
-- yarn gulp format (clang-format)
+- yarn gulp format (prettier)
 - yarn promisetest (promise a+ test)
 - yarn bazel test //packages/zone.js/... (all tests)
 
@@ -76,7 +78,7 @@ Releasing `zone.js` is a two step process.
 
 ```
 rm -rf node_modules && yarn install
-export PREVIOUS_ZONE_TAG=`git tag -l 'zone.js-0.11.*' | tail -n1`
+export PREVIOUS_ZONE_TAG=`git tag -l 'zone.js-0.15.*' | tail -n1`
 export VERSION=`(cd packages/zone.js; npm version patch --no-git-tag-version)`
 export VERSION=${VERSION#v}
 export TAG="zone.js-${VERSION}"
@@ -89,32 +91,32 @@ Inspect the `packages/zone.js/CHANGELOG.md` for any issues and than commit it wi
 Create a dry run build to make sure everything is ready.
 
 ```
-yarn bazel --output_base=$(mktemp -d) run //packages/zone.js:npm_package.pack --workspace_status_command="echo BUILD_SCM_VERSION $VERSION"
+yarn bazel --output_base=$(mktemp -d) run //packages/zone.js:npm_package.pack --workspace_status_command="echo STABLE_PROJECT_VERSION $VERSION"
 ```
 
-If everything looks good commit the changes and push them to your origin to create a PR.
+If everything looks good, commit the changes and push them to your origin to create a PR.
 
 ```
-git co -b "release_${TAG}"
+git checkout -b "release_${TAG}"
 git add packages/zone.js/CHANGELOG.md packages/zone.js/package.json
-git ci -m "release: cut the ${TAG} release"
+git commit -m "release: cut the ${TAG} release"
 git push origin "release_${TAG}"
 ```
 
 
 #### 2. Cutting a release
 
-Check out the SHA on master which has the changelog commit of the zone.js
+Check out the SHA on main which has the changelog commit of the zone.js
 
 ```
 git fetch upstream
-git checkout upstream/master
+git checkout upstream/main
 rm -rf node_modules && yarn install
 export VERSION=`(node -e "console.log(require('./packages/zone.js/package.json').version)")`
 export TAG="zone.js-${VERSION}"
-export SHA=`git log upstream/master --oneline -n 1000 | grep "release: cut the ${TAG} release" | cut -f 1 -d " "`
+export SHA=`git log upstream/main --oneline -n 1000 | grep "release: cut the ${TAG} release" | cut -f 1 -d " "`
 echo "Releasing '$VERSION' which will be tagged as '$TAG' from SHA '$SHA'."
-git co ${SHA}
+git checkout ${SHA}
 npm login --registry https://wombat-dressing-room.appspot.com
 yarn bazel -- run --config=release -- //packages/zone.js:npm_package.publish --access public --tag latest
 git tag ${TAG} ${SHA}

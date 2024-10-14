@@ -1,16 +1,20 @@
 {
+  // This tsconfig is only used by IDEs, no actual builds.
   "compilerOptions": {
     "baseUrl": ".",
     "declaration": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "module": "commonjs",
+    "esModuleInterop": true,
     "moduleResolution": "node",
     "outDir": "../dist/tools/",
     "noImplicitAny": true,
     "noFallthroughCasesInSwitch": true,
-    "paths": {},
-    "rootDir": ".",
+    "paths": {
+      "@angular/*": ["../packages/*"]
+    },
+    "rootDirs": [".", ".."],
     "sourceMap": true,
     "inlineSources": true,
     "lib": [
@@ -26,7 +30,6 @@
   "exclude": [
     "testing",
     "node_modules",
-    "ts-api-guardian",
     "typings-test",
     "public_api_guard",
     "docs"

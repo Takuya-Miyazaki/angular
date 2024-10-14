@@ -14,18 +14,17 @@ But there are still a lot of non-standard APIs that are not patched by default, 
 * webcomponents
 
 Usage:
-
 ```
 <script src="webcomponents-lite.js"></script>
-<script src="node_modules/zone.js/dist/zone.js"></script>
-<script src="node_modules/zone.js/dist/webapis-shadydom.js"></script>
+<script src="node_modules/zone.js/bundles/zone.umd.js"></script>
+<script src="node_modules/zone.js/bundles/webapis-shadydom.umd.js"></script>
 ```
 
 ## Currently supported non standard node APIs
 
 ## Currently supported non standard common APIs
 
-* [Bluebird](http://bluebirdjs.com/docs/getting-started.html] Promise
+* [Bluebird](http://bluebirdjs.com/docs/getting-started.html) Promise
 
 Browser Usage:
 
@@ -45,8 +44,8 @@ Angular Usage:
 in polyfills.ts, import the `zone-bluebird` package.
 
 ```
-import 'zone.js/dist/zone'; // Included with Angular CLI.
-import 'zone.js/dist/zone-bluebird';
+import 'zone.js'; // Included with Angular CLI.
+import 'zone.js/plugins/zone-bluebird';
 ```
 
 in main.ts, patch bluebird.
@@ -67,7 +66,7 @@ Node Sample Usage:
 ```
 require('zone.js');
 const Bluebird = require('bluebird');
-require('zone.js/dist/zone-bluebird');
+require('zone.js/plugins/zone-bluebird');
 Zone[Zone['__symbol__']('bluebird')](Bluebird);
 Zone.current.fork({
   name: 'bluebird'
@@ -178,7 +177,7 @@ is patched, so each asynchronous call will run in the correct zone.
 For example, in an Angular application, you can load this patch in your `app.module.ts`.
 
 ```
-import 'zone.js/dist/zone-patch-rxjs';
+import 'zone.js/plugins/zone-patch-rxjs';
 ```
 
 * electron
@@ -187,19 +186,19 @@ In electron, we patched the following APIs with `zone.js`
 
 1. Browser API
 2. NodeJS
-3. Electorn Native API
+3. Electron Native API
 
 ## Usage.
 
 add following line into `polyfill.ts` after loading zone-mix.
 
 ```
-//import 'zone.js/dist/zone'; // originally added by angular-cli, comment it out
-import 'zone.js/dist/zone-mix'; // add zone-mix to patch both Browser and Nodejs
-import 'zone.js/dist/zone-patch-electron'; // add zone-patch-electron to patch Electron native API
+//import 'zone.js'; // originally added by angular-cli, comment it out
+import 'zone.js/mix'; // add zone-mix to patch both Browser and Nodejs
+import 'zone.js/plugins/zone-patch-electron'; // add zone-patch-electron to patch Electron native API
 ```
 
-there is a sampel repo [zone-electron](https://github.com/JiaLiPassion/zone-electron).
+there is a sample repo [zone-electron](https://github.com/JiaLiPassion/zone-electron).
 
 * socket.io-client
 
@@ -207,8 +206,8 @@ user need to patch `io` themselves just like following code.
 
 ```javascript
     <script src="socket.io-client/dist/socket.io.js"></script>
-    <script src="zone.js/dist/zone.js"></script>
-    <script src="zone.js/dist/zone-patch-socket-io.js"></script>
+    <script src="zone.js/bundles/zone.umd.js"></script>
+    <script src="zone.js/bundles/zone-patch-socket-io.js"></script>
     <script>
       // patch io here
       Zone[Zone.__symbol__('socketio')](io);
@@ -225,11 +224,11 @@ detail usage.
 provide a helper method to patch jsonp. Because jsonp has a lot of implementation, so
 user need to provide the information to let json `send` and `callback` in zone.
 
-there is a sampel repo [zone-jsonp](https://github.com/JiaLiPassion/test-zone-js-with-jsonp) here,
+there is a sample repo [zone-jsonp](https://github.com/JiaLiPassion/test-zone-js-with-jsonp) here,
 sample usage is:
 
 ```javascript
-import 'zone.js/dist/zone-patch-jsonp';
+import 'zone.js/plugins/zone-patch-jsonp';
 Zone['__zone_symbol__jsonp']({
   jsonp: getJSONP,
   sendFuncName: 'send',
@@ -243,8 +242,8 @@ Currently only `Chrome 64` native support this feature.
 you can add the following line into `polyfill.ts` after loading `zone.js`.
 
 ```
-import 'zone.js/dist/zone';
-import 'zone.js/dist/zone-patch-resize-observer';
+import 'zone.js';
+import 'zone.js/plugins/zone-patch-resize-observer';
 ```
 
 there is a sample repo [zone-resize-observer](https://github.com/JiaLiPassion/zone-resize-observer) here

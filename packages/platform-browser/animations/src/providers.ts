@@ -3,28 +3,48 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
-import {AnimationBuilder} from '@angular/animations';
-import {AnimationDriver, ɵAnimationEngine as AnimationEngine, ɵAnimationStyleNormalizer as AnimationStyleNormalizer, ɵCssKeyframesDriver as CssKeyframesDriver, ɵNoopAnimationDriver as NoopAnimationDriver, ɵsupportsWebAnimations as supportsWebAnimations, ɵWebAnimationsDriver as WebAnimationsDriver, ɵWebAnimationsStyleNormalizer as WebAnimationsStyleNormalizer} from '@angular/animations/browser';
+import {
+  AnimationDriver,
+  NoopAnimationDriver,
+  ɵAnimationEngine as AnimationEngine,
+  ɵAnimationRendererFactory as AnimationRendererFactory,
+  ɵAnimationStyleNormalizer as AnimationStyleNormalizer,
+  ɵWebAnimationsDriver as WebAnimationsDriver,
+  ɵWebAnimationsStyleNormalizer as WebAnimationsStyleNormalizer,
+} from '@angular/animations/browser';
 import {DOCUMENT} from '@angular/common';
-import {Inject, Injectable, InjectionToken, NgZone, Provider, RendererFactory2} from '@angular/core';
+import {
+  ANIMATION_MODULE_TYPE,
+  inject,
+  Inject,
+  Injectable,
+  NgZone,
+  OnDestroy,
+  Provider,
+  RendererFactory2,
+  ɵChangeDetectionScheduler as ChangeDetectionScheduler,
+} from '@angular/core';
 import {ɵDomRendererFactory2 as DomRendererFactory2} from '@angular/platform-browser';
 
-import {BrowserAnimationBuilder} from './animation_builder';
-import {AnimationRendererFactory} from './animation_renderer';
-
 @Injectable()
-export class InjectableAnimationEngine extends AnimationEngine {
+export class InjectableAnimationEngine extends AnimationEngine implements OnDestroy {
+  // The `ApplicationRef` is injected here explicitly to force the dependency ordering.
+  // Since the `ApplicationRef` should be created earlier before the `AnimationEngine`, they
+  // both have `ngOnDestroy` hooks and `flush()` must be called after all views are destroyed.
   constructor(
-      @Inject(DOCUMENT) doc: any, driver: AnimationDriver, normalizer: AnimationStyleNormalizer) {
-    super(doc.body, driver, normalizer);
+    @Inject(DOCUMENT) doc: Document,
+    driver: AnimationDriver,
+    normalizer: AnimationStyleNormalizer,
+  ) {
+    super(doc, driver, normalizer);
   }
-}
 
-export function instantiateSupportedAnimationDriver() {
-  return supportsWebAnimations() ? new WebAnimationsDriver() : new CssKeyframesDriver();
+  ngOnDestroy(): void {
+    this.flush();
+  }
 }
 
 export function instantiateDefaultStyleNormalizer() {
@@ -32,24 +52,21 @@ export function instantiateDefaultStyleNormalizer() {
 }
 
 export function instantiateRendererFactory(
-    renderer: DomRendererFactory2, engine: AnimationEngine, zone: NgZone) {
+  renderer: DomRendererFactory2,
+  engine: AnimationEngine,
+  zone: NgZone,
+) {
   return new AnimationRendererFactory(renderer, engine, zone);
 }
 
-/**
- * @publicApi
- */
-export const ANIMATION_MODULE_TYPE =
-    new InjectionToken<'NoopAnimations'|'BrowserAnimations'>('AnimationModuleType');
-
 const SHARED_ANIMATION_PROVIDERS: Provider[] = [
-  {provide: AnimationBuilder, useClass: BrowserAnimationBuilder},
   {provide: AnimationStyleNormalizer, useFactory: instantiateDefaultStyleNormalizer},
-  {provide: AnimationEngine, useClass: InjectableAnimationEngine}, {
+  {provide: AnimationEngine, useClass: InjectableAnimationEngine},
+  {
     provide: RendererFactory2,
     useFactory: instantiateRendererFactory,
-    deps: [DomRendererFactory2, AnimationEngine, NgZone]
-  }
+    deps: [DomRendererFactory2, AnimationEngine, NgZone],
+  },
 ];
 
 /**
@@ -57,8 +74,9 @@ const SHARED_ANIMATION_PROVIDERS: Provider[] = [
  * include them in the BrowserModule.
  */
 export const BROWSER_ANIMATIONS_PROVIDERS: Provider[] = [
-  {provide: AnimationDriver, useFactory: instantiateSupportedAnimationDriver},
-  {provide: ANIMATION_MODULE_TYPE, useValue: 'BrowserAnimations'}, ...SHARED_ANIMATION_PROVIDERS
+  {provide: AnimationDriver, useFactory: () => new WebAnimationsDriver()},
+  {provide: ANIMATION_MODULE_TYPE, useValue: 'BrowserAnimations'},
+  ...SHARED_ANIMATION_PROVIDERS,
 ];
 
 /**
@@ -67,5 +85,6 @@ export const BROWSER_ANIMATIONS_PROVIDERS: Provider[] = [
  */
 export const BROWSER_NOOP_ANIMATIONS_PROVIDERS: Provider[] = [
   {provide: AnimationDriver, useClass: NoopAnimationDriver},
-  {provide: ANIMATION_MODULE_TYPE, useValue: 'NoopAnimations'}, ...SHARED_ANIMATION_PROVIDERS
+  {provide: ANIMATION_MODULE_TYPE, useValue: 'NoopAnimations'},
+  ...SHARED_ANIMATION_PROVIDERS,
 ];

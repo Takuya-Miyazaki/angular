@@ -32,7 +32,7 @@ Stack Overflow is a much better place to ask questions since:
 
 To save your and our time, we will systematically close all issues that are requests for general support and redirect people to Stack Overflow.
 
-If you would like to chat about the question in real-time, you can reach out via [our gitter channel][gitter].
+If you would like to chat about the question in real-time, you can reach out via [the Angular community Discord server][discord].
 
 
 ## <a name="issue"></a> Found a Bug?
@@ -58,9 +58,9 @@ If you would like to *implement* a new feature, please consider the size of the 
 
 ### <a name="submit-issue"></a> Submitting an Issue
 
-Before you submit an issue, please search the issue tracker, maybe an issue for your problem already exists and the discussion might inform you of workarounds readily available.
+Before you submit an issue, please search the issue tracker. An issue for your problem might already exist and the discussion might inform you of workarounds readily available.
 
-We want to fix all the issues as soon as possible, but before fixing a bug we need to reproduce and confirm it.
+We want to fix all the issues as soon as possible, but before fixing a bug, we need to reproduce and confirm it.
 In order to reproduce bugs, we require that you provide a minimal reproduction.
 Having a minimal reproducible scenario gives us a wealth of important information without going back and forth to you with additional questions.
 
@@ -68,7 +68,7 @@ A minimal reproduction allows us to quickly confirm a bug (or point out a coding
 
 We require a minimal reproduction to save maintainers' time and ultimately be able to fix more bugs.
 Often, developers find coding problems themselves while preparing a minimal reproduction.
-We understand that sometimes it might be hard to extract essential bits of code from a larger codebase but we really need to isolate the problem before we can fix it.
+We understand that sometimes it might be hard to extract essential bits of code from a larger codebase, but we really need to isolate the problem before we can fix it.
 
 Unfortunately, we are not able to investigate / fix bugs without a minimal reproduction, so if we don't hear back from you, we are going to close an issue that doesn't have enough info to be reproduced.
 
@@ -89,12 +89,12 @@ Before you submit your Pull Request (PR) consider the following guidelines:
    We cannot accept code without a signed CLA.
    Make sure you author all contributed Git commits with email address associated with your CLA signature.
 
-4. Fork the angular/angular repo.
+4. [Fork](https://docs.github.com/en/github/getting-started-with-github/fork-a-repo) the [angular/angular](https://github.com/angular/angular/fork) repo.
 
-5. Make your changes in a new git branch:
+5. In your forked repository, make your changes in a new git branch:
 
      ```shell
-     git checkout -b my-fix-branch master
+     git checkout -b my-fix-branch main
      ```
 
 6. Create your patch, **including appropriate test cases**.
@@ -107,9 +107,9 @@ Before you submit your Pull Request (PR) consider the following guidelines:
    Adherence to these conventions is necessary because release notes are automatically generated from these messages.
 
      ```shell
-     git commit -a
+     git commit --all
      ```
-    Note: the optional commit `-a` command line option will automatically "add" and "rm" edited files.
+    Note: the optional commit `--all` command line option will automatically "add" and "rm" edited files.
 
 10. Push your branch to GitHub:
 
@@ -117,20 +117,58 @@ Before you submit your Pull Request (PR) consider the following guidelines:
     git push origin my-fix-branch
     ```
 
-11. In GitHub, send a pull request to `angular:master`.
+11. In GitHub, send a pull request to `angular:main`.
 
-   If we ask for changes via code reviews then:
+### Reviewing a Pull Request
 
-   * Make the required updates.
-   * Re-run the Angular test suites to ensure tests are still passing.
-   * Rebase your branch and force push to your GitHub repository (this will update your Pull Request):
+The Angular team reserves the right not to accept pull requests from community members who haven't been good citizens of the community. Such behavior includes not following the [Angular code of conduct](https://github.com/angular/code-of-conduct) and applies within or outside of Angular managed channels.
 
-      ```shell
-      git rebase master -i
-      git push -f
-      ```
+#### Addressing review feedback
+
+If we ask for changes via code reviews then:
+
+1. Make the required updates to the code.
+
+2. Re-run the Angular test suites to ensure tests are still passing.
+
+3. Create a fixup commit and push to your GitHub repository (this will update your Pull Request):
+
+    ```shell
+    git commit --all --fixup HEAD
+    git push
+    ```
+
+    For more info on working with fixup commits see [here](./contributing-docs/using-fixup-commits.md).
 
 That's it! Thank you for your contribution!
+
+
+##### Updating the commit message
+
+A reviewer might often suggest changes to a commit message (for example, to add more context for a change or adhere to our [commit message guidelines](#commit)).
+In order to update the commit message of the last commit on your branch:
+
+1. Check out your branch:
+
+    ```shell
+    git checkout my-fix-branch
+    ```
+
+2. Amend the last commit and modify the commit message:
+
+    ```shell
+    git commit --amend
+    ```
+
+3. Push to your GitHub repository:
+
+    ```shell
+    git push --force-with-lease
+    ```
+
+> NOTE:<br />
+> If you need to update the commit message of an earlier commit, you can use `git rebase` in interactive mode.
+> See the [git docs](https://git-scm.com/docs/git-rebase#_interactive_mode) for more details.
 
 
 #### After your pull request is merged
@@ -143,10 +181,10 @@ After your pull request is merged, you can safely delete your branch and pull th
     git push origin --delete my-fix-branch
     ```
 
-* Check out the master branch:
+* Check out the main branch:
 
     ```shell
-    git checkout master -f
+    git checkout main -f
     ```
 
 * Delete the local branch:
@@ -155,10 +193,10 @@ After your pull request is merged, you can safely delete your branch and pull th
     git branch -D my-fix-branch
     ```
 
-* Update your master with the latest upstream version:
+* Update your local `main` with the latest upstream version:
 
     ```shell
-    git pull --ff upstream master
+    git pull --ff upstream main
     ```
 
 
@@ -169,12 +207,12 @@ To ensure consistency throughout the source code, keep these rules in mind as yo
 * All public API methods **must be documented**.
 * We follow [Google's JavaScript Style Guide][js-style-guide], but wrap all code at **100 characters**.
 
-   An automated formatter is available, see [DEVELOPER.md](docs/DEVELOPER.md#clang-format).
+   An automated formatter is available, see [DEVELOPER.md](contributing-docs/building-and-testing-angular.md#formatting-your-source-code).
 
 
 ## <a name="commit"></a> Commit Message Format
 
-*This specification is inspired and supersedes the [AngularJS commit message format][commit-message-format].*
+*This specification is inspired by and supersedes the [AngularJS commit message format][commit-message-format].*
 
 We have very precise rules over how our Git commit messages must be formatted.
 This format leads to **easier to read commit history**.
@@ -192,15 +230,13 @@ Each commit message consists of a **header**, a **body**, and a **footer**.
 
 The `header` is mandatory and must conform to the [Commit Message Header](#commit-header) format.
 
-The `body` is mandatory for all commits except for those of scope "docs".
-When the body is required it must be at least 20 characters long.
+The `body` is mandatory for all commits except for those of type "docs".
+When the body is present it must be at least 20 characters long and must conform to the [Commit Message Body](#commit-body) format.
 
-The `footer` is optional.
-
-Any line of the commit message cannot be longer than 100 characters.
+The `footer` is optional. The [Commit Message Footer](#commit-footer) format describes what the footer is used for and the structure it must have.
 
 
-#### <a href="commit-header"></a>Commit Message Header
+#### <a name="commit-header"></a>Commit Message Header
 
 ```
 <type>(<scope>): <short summary>
@@ -209,11 +245,11 @@ Any line of the commit message cannot be longer than 100 characters.
   │       │
   │       └─⫸ Commit Scope: animations|bazel|benchpress|common|compiler|compiler-cli|core|
   │                          elements|forms|http|language-service|localize|platform-browser|
-  │                          platform-browser-dynamic|platform-server|platform-webworker|
-  │                          platform-webworker-dynamic|router|service-worker|upgrade|zone.js|
-  │                          packaging|changelog|dev-infra|docs-infra|migrations|ngcc|ve
+  │                          platform-browser-dynamic|platform-server|router|service-worker|
+  │                          upgrade|zone.js|packaging|changelog|docs-infra|migrations|
+  │                          devtools
   │
-  └─⫸ Commit Type: build|ci|docs|feat|fix|perf|refactor|style|test
+  └─⫸ Commit Type: build|ci|docs|feat|fix|perf|refactor|test
 ```
 
 The `<type>` and `<summary>` fields are mandatory, the `(<scope>)` field is optional.
@@ -224,7 +260,7 @@ The `<type>` and `<summary>` fields are mandatory, the `(<scope>)` field is opti
 Must be one of the following:
 
 * **build**: Changes that affect the build system or external dependencies (example scopes: gulp, broccoli, npm)
-* **ci**: Changes to our CI configuration files and scripts (example scopes: Circle, BrowserStack, SauceLabs)
+* **ci**: Changes to our CI configuration files and scripts (examples: CircleCi, SauceLabs)
 * **docs**: Documentation only changes
 * **feat**: A new feature
 * **fix**: A bug fix
@@ -253,8 +289,6 @@ The following is the list of supported scopes:
 * `platform-browser`
 * `platform-browser-dynamic`
 * `platform-server`
-* `platform-webworker`
-* `platform-webworker-dynamic`
 * `router`
 * `service-worker`
 * `upgrade`
@@ -266,17 +300,15 @@ There are currently a few exceptions to the "use package name" rule:
 
 * `changelog`: used for updating the release notes in CHANGELOG.md
 
-* `dev-infra`: used for dev-infra related changes within the directories /scripts, /tools and /dev-infra
+* `dev-infra`: used for dev-infra related changes within the directories /scripts and /tools
 
-* `docs-infra`: used for docs-app (angular.io) related changes within the /aio directory of the repo
+* `docs-infra`: used for docs-app (angular.dev) related changes within the /adev directory of the repo
 
 * `migrations`: used for changes to the `ng update` migrations.
 
-* `ngcc`: used for changes to the [Angular Compatibility Compiler](./packages/compiler-cli/ngcc/README.md)
+* `devtools`: used for changes in the [browser extension](./devtools/README.md).
 
-* `ve`: used for changes specific to ViewEngine (legacy compiler/renderer).
-
-* none/empty string: useful for `style`, `test` and `refactor` changes that are done across all packages (e.g. `style: add missing semicolons`) and for docs changes that are not related to a specific package (e.g. `docs: fix typo in tutorial`).
+* none/empty string: useful for `test` and `refactor` changes that are done across all packages (e.g. `test: add missing unit tests`) and for docs changes that are not related to a specific package (e.g. `docs: fix typo in tutorial`).
 
 
 ##### Summary
@@ -288,7 +320,7 @@ Use the summary field to provide a succinct description of the change:
 * no dot (.) at the end
 
 
-#### Commit Message Body
+#### <a name="commit-body"></a>Commit Message Body
 
 Just as in the summary, use the imperative, present tense: "fix" not "fixed" nor "fixes".
 
@@ -296,9 +328,10 @@ Explain the motivation for the change in the commit message body. This commit me
 You can include a comparison of the previous behavior with the new behavior in order to illustrate the impact of the change.
 
 
-#### Commit Message Footer
+#### <a name="commit-footer"></a>Commit Message Footer
 
-The footer can contain information about breaking changes and is also the place to reference GitHub issues, Jira tickets, and other PRs that this commit closes or is related to.
+The footer can contain information about breaking changes and deprecations and is also the place to reference GitHub issues, Jira tickets, and other PRs that this commit closes or is related to.
+For example:
 
 ```
 BREAKING CHANGE: <breaking change summary>
@@ -309,7 +342,20 @@ BREAKING CHANGE: <breaking change summary>
 Fixes #<issue number>
 ```
 
-Breaking Change section should start with the phrase "BREAKING CHANGE: " followed by a summary of the breaking change, a blank line, and a detailed description of the breaking change that also includes migration instructions.
+or
+
+```
+DEPRECATED: <what is deprecated>
+<BLANK LINE>
+<deprecation description + recommended update path>
+<BLANK LINE>
+<BLANK LINE>
+Closes #<pr number>
+```
+
+Breaking Change section should start with the phrase `BREAKING CHANGE: ` followed by a summary of the breaking change, a blank line, and a detailed description of the breaking change that also includes migration instructions.
+
+Similarly, a Deprecation section should start with `DEPRECATED: ` followed by a short description of what is deprecated, a blank line, and a detailed description of the deprecation that also mentions the recommended update path.
 
 
 ### Revert commits
@@ -343,16 +389,11 @@ The following documents can help you sort out issues with GitHub accounts and mu
 
 
 
-[angular-group]: https://groups.google.com/forum/#!forum/angular
-[coc]: https://github.com/angular/code-of-conduct/blob/master/CODE_OF_CONDUCT.md
+[coc]: https://github.com/angular/code-of-conduct/blob/main/CODE_OF_CONDUCT.md
 [commit-message-format]: https://docs.google.com/document/d/1QrDFcIiPjSLDn3EL15IJygNPiHORgU1_OOAqWjiDU5Y/edit#
-[corporate-cla]: http://code.google.com/legal/corporate-cla-v1.0.html
-[dev-doc]: https://github.com/angular/angular/blob/master/docs/DEVELOPER.md
+[corporate-cla]: https://cla.developers.google.com/about/google-corporate
+[dev-doc]: ./contributing-docs/building-and-testing-angular.md
 [github]: https://github.com/angular/angular
-[gitter]: https://gitter.im/angular/angular
-[individual-cla]: http://code.google.com/legal/individual-cla-v1.0.html
+[discord]: https://discord.gg/angular
+[individual-cla]: https://cla.developers.google.com/about/google-individual
 [js-style-guide]: https://google.github.io/styleguide/jsguide.html
-[jsfiddle]: http://jsfiddle.net
-[plunker]: http://plnkr.co/edit
-[runnable]: http://runnable.com
-[stackoverflow]: http://stackoverflow.com/questions/tagged/angular

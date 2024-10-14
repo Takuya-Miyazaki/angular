@@ -3,7 +3,7 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 /**
@@ -13,20 +13,19 @@
  *
  * @usageNotes
  *
- * In the following example, `RepeatPipe` repeats a given value a given number of times.
+ * In the following example, `TruncatePipe` returns the shortened value with an added ellipses.
  *
- * ```ts
- * import {Pipe, PipeTransform} from '@angular/core';
+ * <code-example path="core/ts/pipes/simple_truncate.ts" header="simple_truncate.ts"></code-example>
  *
- * @Pipe({name: 'repeat'})
- * export class RepeatPipe implements PipeTransform {
- *   transform(value: any, times: number) {
- *     return value.repeat(times);
- *   }
- * }
- * ```
+ * Invoking `{{ 'It was the best of times' | truncate }}` in a template will produce `It was...`.
  *
- * Invoking `{{ 'ok' | repeat:3 }}` in a template produces `okokok`.
+ * In the following example, `TruncatePipe` takes parameters that sets the truncated length and the
+ * string to append with.
+ *
+ * <code-example path="core/ts/pipes/truncate.ts" header="truncate.ts"></code-example>
+ *
+ * Invoking `{{ 'It was the best of times' | truncate:4:'....' }}` in a template will produce `It
+ * was the best....`.
  *
  * @publicApi
  */

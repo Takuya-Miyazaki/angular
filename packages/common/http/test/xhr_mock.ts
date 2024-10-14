@@ -3,11 +3,11 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
+import {XhrFactory} from '@angular/common';
 import {HttpHeaders} from '@angular/common/http/src/headers';
-import {XhrFactory} from '@angular/common/http/src/xhr';
 
 export class MockXhrFactory implements XhrFactory {
   // TODO(issue/24571): remove '!'.
@@ -45,18 +45,20 @@ export class MockXMLHttpRequest {
   responseType: string = 'text';
 
   // Mocked response interface.
-  response: any|undefined = undefined;
-  responseText: string|undefined = undefined;
-  responseURL: string|null = null;
+  response: any | undefined = undefined;
+  responseText: string | undefined = undefined;
+  responseURL: string | null = null;
   status: number = 0;
   statusText: string = '';
   mockResponseHeaders: string = '';
 
   listeners: {
-    error?: (event: ErrorEvent) => void,
-    load?: () => void,
-    progress?: (event: ProgressEvent) => void,
-    uploadProgress?: (event: ProgressEvent) => void,
+    error?: (event: ProgressEvent) => void;
+    timeout?: (event: ProgressEvent) => void;
+    abort?: () => void;
+    load?: () => void;
+    progress?: (event: ProgressEvent) => void;
+    uploadProgress?: (event: ProgressEvent) => void;
   } = {};
 
   upload = new MockXMLHttpRequestUpload(this);
@@ -70,11 +72,16 @@ export class MockXMLHttpRequest {
     this.body = body;
   }
 
-  addEventListener(event: 'error'|'load'|'progress'|'uploadProgress', handler: Function): void {
+  addEventListener(
+    event: 'error' | 'timeout' | 'load' | 'progress' | 'uploadProgress' | 'abort',
+    handler: Function,
+  ): void {
     this.listeners[event] = handler as any;
   }
 
-  removeEventListener(event: 'error'|'load'|'progress'|'uploadProgress'): void {
+  removeEventListener(
+    event: 'error' | 'timeout' | 'load' | 'progress' | 'uploadProgress' | 'abort',
+  ): void {
     delete this.listeners[event];
   }
 
@@ -86,7 +93,7 @@ export class MockXMLHttpRequest {
     return this.mockResponseHeaders;
   }
 
-  getResponseHeader(header: string): string|null {
+  getResponseHeader(header: string): string | null {
     return new HttpHeaders(this.mockResponseHeaders).get(header);
   }
 
@@ -126,6 +133,18 @@ export class MockXMLHttpRequest {
   mockErrorEvent(error: any): void {
     if (this.listeners.error) {
       this.listeners.error(error);
+    }
+  }
+
+  mockTimeoutEvent(error: any): void {
+    if (this.listeners.timeout) {
+      this.listeners.timeout(error);
+    }
+  }
+
+  mockAbortEvent(): void {
+    if (this.listeners.abort) {
+      this.listeners.abort();
     }
   }
 

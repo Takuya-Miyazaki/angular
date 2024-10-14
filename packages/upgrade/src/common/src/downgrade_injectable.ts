@@ -3,10 +3,11 @@
  * Copyright Google LLC All Rights Reserved.
  *
  * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
+ * found in the LICENSE file at https://angular.dev/license
  */
 
 import {Injector} from '@angular/core';
+
 import {IInjectorService} from './angular1';
 import {$INJECTOR, INJECTOR_KEY} from './constants';
 import {getTypeName, isFunction, validateInjectionKey} from './util';
@@ -72,7 +73,7 @@ import {getTypeName, isFunction, validateInjectionKey} from './util';
  * @publicApi
  */
 export function downgradeInjectable(token: any, downgradedModule: string = ''): Function {
-  const factory = function($injector: IInjectorService) {
+  const factory = function ($injector: IInjectorService) {
     const injectorKey = `${INJECTOR_KEY}${downgradedModule}`;
     const injectableName = isFunction(token) ? getTypeName(token) : String(token);
     const attemptedAction = `instantiating injectable '${injectableName}'`;
@@ -83,7 +84,7 @@ export function downgradeInjectable(token: any, downgradedModule: string = ''): 
       const injector: Injector = $injector.get(injectorKey);
       return injector.get(token);
     } catch (err) {
-      throw new Error(`Error while ${attemptedAction}: ${err.message || err}`);
+      throw new Error(`Error while ${attemptedAction}: ${(err as Error).message || err}`);
     }
   };
   (factory as any)['$inject'] = [$INJECTOR];
