@@ -1218,9 +1218,6 @@
     "name": "getOrCreateViewRefs"
   },
   {
-    "name": "getOriginalError"
-  },
-  {
     "name": "getOwnDefinition"
   },
   {
@@ -1686,6 +1683,9 @@
     "name": "producerAddLiveConsumer"
   },
   {
+    "name": "producerMarkClean"
+  },
+  {
     "name": "producerNotifyConsumers"
   },
   {
@@ -1768,6 +1768,9 @@
   },
   {
     "name": "runEffectsInView"
+  },
+  {
+    "name": "runInInjectionContext"
   },
   {
     "name": "saveNameToExportMap"

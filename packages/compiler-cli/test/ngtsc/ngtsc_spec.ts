@@ -394,7 +394,7 @@ runInEachFileSystem((os: string) => {
 
       const dtsContents = env.getContents('test.d.ts');
       expect(dtsContents).toContain(
-        'static ɵdir: i0.ɵɵDirectiveDeclaration<TestDir, never, never, {}, {}, never, never, false, never>',
+        'static ɵdir: i0.ɵɵDirectiveDeclaration<TestDir, never, never, {}, {}, never, never, true, never>',
       );
       expect(dtsContents).toContain('static ɵfac: i0.ɵɵFactoryDeclaration<TestDir, never>');
     });
@@ -1401,11 +1401,11 @@ runInEachFileSystem((os: string) => {
 
       const jsContents = env.getContents('test.js');
       expect(jsContents).toContain(
-        'i0.ɵɵdefineDirective({ type: TestBase, inputs: { input: "input" } });',
+        'i0.ɵɵdefineDirective({ type: TestBase, inputs: { input: "input" }, standalone: true });',
       );
 
       const dtsContents = env.getContents('test.d.ts');
-      const expectedDirectiveDeclaration = `static ɵdir: i0.ɵɵDirectiveDeclaration<TestBase, never, never, { "input": { "alias": "input"; "required": false; }; }, {}, never, never, false, never>;`;
+      const expectedDirectiveDeclaration = `static ɵdir: i0.ɵɵDirectiveDeclaration<TestBase, never, never, { "input": { "alias": "input"; "required": false; }; }, {}, never, never, true, never>;`;
       expect(dtsContents).toContain(expectedDirectiveDeclaration);
     });
 
@@ -1660,7 +1660,7 @@ runInEachFileSystem((os: string) => {
       export class MyPipe {}
 
       @Component({
-        selector: 'test', 
+        selector: 'test',
         template: '',
         standalone: false
       })
@@ -1858,7 +1858,7 @@ runInEachFileSystem((os: string) => {
         `
       import {Component} from '@angular/core';
       @Component({
-        selector: 'foo', 
+        selector: 'foo',
         template: '',
         standalone: false,
       })
@@ -1938,7 +1938,7 @@ runInEachFileSystem((os: string) => {
       export class FooModule {}
 
       @Component({
-        selector: 'foo', 
+        selector: 'foo',
         template: 'foo',
         standalone: false,
       })
@@ -1964,7 +1964,7 @@ runInEachFileSystem((os: string) => {
       export class FooModule {}
 
       @Directive({
-        selector: 'foo', 
+        selector: 'foo',
         standalone: false,
       })
       export class Foo {}
@@ -2221,7 +2221,7 @@ runInEachFileSystem((os: string) => {
         }
 
         @Component({
-          selector: 'test-cmp', 
+          selector: 'test-cmp',
           template: '{{value | test}}',
           standalone: false,
         })
@@ -3194,7 +3194,7 @@ runInEachFileSystem((os: string) => {
         import {Component, Directive, Injectable, NgModule, Pipe} from '@angular/core';
 
         @Component({
-          selector: 'test', 
+          selector: 'test',
           template: 'test',
           standalone: false,
         })
@@ -3258,7 +3258,7 @@ runInEachFileSystem((os: string) => {
         import {Component, Directive} from '@angular/core';
 
         @Component({
-          selector: 'test', 
+          selector: 'test',
           template: 'test',
           standalone: false,
         })
@@ -6857,7 +6857,7 @@ runInEachFileSystem((os: string) => {
       import {Component, Directive, NgModule} from '@angular/core';
 
       @Component({
-        selector: 'my-cmp', 
+        selector: 'my-cmp',
         template: \`${template}\`,
         standalone: false,
       })
@@ -7108,6 +7108,133 @@ runInEachFileSystem((os: string) => {
           ErrorCode.NGMODULE_INVALID_IMPORT,
           'Is it missing an @NgModule annotation?',
         );
+      });
+
+      it('should report if an NgModule imports itself', () => {
+        env.write(
+          'test.ts',
+          `
+          import {NgModule} from '@angular/core';
+
+          @NgModule({imports: [MyModule]})
+          export class MyModule {}
+        `,
+        );
+
+        const diags = env.driveDiagnostics();
+        expect(diags.length).toBe(1);
+        expect(diags[0].messageText).toBe('NgModule "import" field contains a cycle');
+      });
+
+      it('should report if an NgModule exports itself', () => {
+        env.write(
+          'test.ts',
+          `
+          import {NgModule} from '@angular/core';
+
+          @NgModule({exports: [MyModule]})
+          export class MyModule {}
+        `,
+        );
+
+        const diags = env.driveDiagnostics();
+        expect(diags.length).toBe(1);
+        expect(diags[0].messageText).toBe('NgModule "export" field contains a cycle');
+      });
+
+      it('should report if an NgModule imports itself transitively', () => {
+        env.write(
+          'dep-2.ts',
+          `
+          import {NgModule} from '@angular/core';
+          import {MyModule} from './test';
+
+          @NgModule({imports: [MyModule]})
+          export class DepModule2 {}
+        `,
+        );
+
+        env.write(
+          'dep.ts',
+          `
+          import {NgModule} from '@angular/core';
+          import {DepModule2} from './dep-2';
+
+          @NgModule({imports: [DepModule2]})
+          export class DepModule {}
+        `,
+        );
+
+        env.write(
+          'test.ts',
+          `
+          import {NgModule} from '@angular/core';
+          import {DepModule} from './dep';
+
+          @NgModule({imports: [DepModule]})
+          export class MyModule {}
+        `,
+        );
+
+        const diags = env.driveDiagnostics();
+        expect(diags.length).toBe(3);
+        expect(diags[0].messageText).toBe(
+          'This import contains errors, which may affect components that depend on this NgModule.',
+        );
+        expect(diags[1].messageText).toBe('NgModule "import" field contains a cycle');
+        expect(diags[2].messageText).toBe(
+          'This import contains errors, which may affect components that depend on this NgModule.',
+        );
+      });
+
+      it('should report if an NgModule imports itself via a forwardRef', () => {
+        env.write(
+          'test.ts',
+          `
+          import {NgModule, forwardRef} from '@angular/core';
+
+          @NgModule({imports: [forwardRef(() => MyModule)]})
+          export class DepModule {}
+
+          @NgModule({imports: [DepModule]})
+          export class MyModule {}
+        `,
+        );
+
+        const diags = env.driveDiagnostics();
+        expect(diags.length).toBe(2);
+        expect(diags[0].messageText).toBe(
+          'This import contains errors, which may affect components that depend on this NgModule.',
+        );
+        expect(diags[1].messageText).toBe('NgModule "import" field contains a cycle');
+      });
+
+      it('should report if an NgModule imports itself via a forwardRef', () => {
+        env.write(
+          'test.ts',
+          `
+          import {NgModule, forwardRef} from '@angular/core';
+
+          @NgModule({imports: [forwardRef(() => ModB)]})
+          class ModA {}
+
+          @NgModule({imports: [forwardRef(() => ModC)]})
+          class ModB {}
+
+          @NgModule({imports: [ModB]})
+          class ModC {}
+        `,
+        );
+
+        const diags = env.driveDiagnostics();
+        expect(diags.length).toBe(3);
+        expect(diags[0].messageText).toBe(
+          'This import contains errors, which may affect components that depend on this NgModule.',
+        );
+        expect(diags[1].messageText).toBe(
+          'This import contains errors, which may affect components that depend on this NgModule.',
+        );
+        expect(diags[2].messageText).toBe('NgModule "import" field contains a cycle');
       });
     });
 
@@ -10737,70 +10864,6 @@ runInEachFileSystem((os: string) => {
         const jsContents = env.getContents('test.js');
 
         expect(jsContents).not.toMatch('forbidOrphanRendering:');
-      });
-    });
-
-    describe('HMR initializer', () => {
-      it('should not generate an HMR initializer by default', () => {
-        env.write(
-          'test.ts',
-          `
-            import {Component} from '@angular/core';
-
-            @Component({
-              selector: 'cmp',
-              template: 'hello',
-              standalone: true,
-            })
-            export class Cmp {}
-          `,
-        );
-
-        env.driveMain();
-
-        const jsContents = env.getContents('test.js');
-        expect(jsContents).not.toContain('import.meta.hot');
-        expect(jsContents).not.toContain('replaceMetadata');
-      });
-
-      it('should generate an HMR initializer when enabled', () => {
-        env.write(
-          'tsconfig.json',
-          JSON.stringify({
-            extends: './tsconfig-base.json',
-            angularCompilerOptions: {
-              _enableHmr: true,
-            },
-          }),
-        );
-
-        env.write(
-          'test.ts',
-          `
-            import {Component} from '@angular/core';
-
-            @Component({
-              selector: 'cmp',
-              template: 'hello',
-              standalone: true,
-            })
-            export class Cmp {}
-          `,
-        );
-
-        env.driveMain();
-
-        const jsContents = env.getContents('test.js');
-
-        // We need a regex match here, because the file path changes based on
-        // the file system and the timestamp will be different for each test run.
-        expect(jsContents).toMatch(
-          /import\.meta\.hot && import\.meta\.hot\.on\("angular:component-update", d => { if \(d\.id == "test\.ts%40Cmp"\) {/,
-        );
-        expect(jsContents).toMatch(
-          /import\(\s*\/\* @vite-ignore \*\/\s+"\/@ng\/component\?c=test\.ts%40Cmp&t=" \+ encodeURIComponent\(d.timestamp\)/,
-        );
-        expect(jsContents).toMatch(/\).then\(m => i0\.ɵɵreplaceMetadata\(Cmp, m\.default\)\);/);
       });
     });
 

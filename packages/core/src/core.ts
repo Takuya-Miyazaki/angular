@@ -37,6 +37,7 @@ export {
   assertPlatform,
   destroyPlatform,
   getPlatform,
+  providePlatformInitializer,
 } from './platform/platform';
 export {
   provideZoneChangeDetection,
@@ -54,7 +55,11 @@ export {
   ANIMATION_MODULE_TYPE,
   CSP_NONCE,
 } from './application/application_tokens';
-export {APP_INITIALIZER, ApplicationInitStatus} from './application/application_init';
+export {
+  APP_INITIALIZER,
+  ApplicationInitStatus,
+  provideAppInitializer,
+} from './application/application_init';
 export * from './zone';
 export * from './render';
 export * from './linker';
@@ -89,6 +94,7 @@ export {ErrorHandler} from './error_handler';
 export * from './core_private_export';
 export * from './core_render3_private_export';
 export * from './core_reactivity_export';
+export * from './resource';
 export {SecurityContext} from './sanitization/security';
 export {Sanitizer} from './sanitization/sanitizer';
 export {

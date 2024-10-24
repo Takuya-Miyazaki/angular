@@ -1023,9 +1023,6 @@
     "name": "getOrSetDefaultValue"
   },
   {
-    "name": "getOriginalError"
-  },
-  {
     "name": "getOwnDefinition"
   },
   {
@@ -1332,6 +1329,9 @@
     "name": "processInjectorTypesWithProviders"
   },
   {
+    "name": "producerMarkClean"
+  },
+  {
     "name": "producerRemoveLiveConsumerAtIndex"
   },
   {
@@ -1399,6 +1399,9 @@
   },
   {
     "name": "runEffectsInView"
+  },
+  {
+    "name": "runInInjectionContext"
   },
   {
     "name": "saveNameToExportMap"

@@ -13,12 +13,14 @@ import {initMockFileSystem} from '@angular/compiler-cli/src/ngtsc/file_system/te
 import {diffText} from '../../utils/tsurge/testing/diff';
 import {dedent} from '../../utils/tsurge/testing/dedent';
 import {setupTsurgeJasmineHelpers} from '../../utils/tsurge/testing/jasmine';
+import ts from 'typescript';
 
 interface TestCase {
   id: string;
   before: string;
   after: string;
   focus?: boolean;
+  options?: ts.CompilerOptions;
 }
 
 const declarationTestCases: TestCase[] = [
@@ -176,6 +178,47 @@ const declarationTestCases: TestCase[] = [
     before: `@ContentChildren('myBtn', {descendants: false}) buttonEl = new QueryList<ElementRef>()`,
     after: `readonly buttonEl = contentChildren<ElementRef>('myBtn');`,
   },
+  // custom cases.
+  {
+    id: 'query with no resolvable ReadT',
+    before: `@ContentChild('myBtn') buttonEl?: ElementRef`,
+    after: `readonly buttonEl = contentChild<ElementRef>('myBtn');`,
+  },
+  {
+    id: 'query with explicit ReadT',
+    before: `@ContentChild('myBtn', {read: ButtonEl}) buttonEl?: ButtonEl`,
+    after: `readonly buttonEl = contentChild('myBtn', { read: ButtonEl });`,
+  },
+  {
+    id: 'query with explicit ReadT',
+    before: `@ContentChild(SomeDir, {read: ElementRef}) buttonEl!: ElementRef`,
+    after: `readonly buttonEl = contentChild.required(SomeDir, { read: ElementRef });`,
+  },
+  {
+    id: 'query with no initializer and strict null checks enabled',
+    before: `@ContentChild(ButtonEl) buttonEl: ElementRef;`,
+    // with --strictNullChecks, `buttonEl` is technically required and the
+    // user code assumes that throughout the project; as the type does not include
+    // `undefined.`
+    after: `readonly buttonEl = contentChild.required(ButtonEl);`,
+    options: {strict: false, strictNullChecks: true},
+  },
+  {
+    id: 'query with no initializer, strict null checks enabled, but includes `undefined` in type',
+    before: `@ContentChild(ButtonEl) buttonEl: ElementRef|undefined;`,
+    // `undefined` is explicitly included, so keeping as an optional query
+    // is a reasonable migration without runtime changes.
+    after: `readonly buttonEl = contentChild(ButtonEl);`,
+    options: {strict: false, strictNullChecks: true},
+  },
+  {
+    id: 'query with no initializer, strict null checks enabled, includes `undefined` via question mark',
+    before: `@ContentChild(ButtonEl) buttonEl?: ElementRef;`,
+    // `undefined` is explicitly included, so keeping as an optional query
+    // is a reasonable migration without runtime changes.
+    after: `readonly buttonEl = contentChild(ButtonEl);`,
+    options: {strict: false, strictNullChecks: true},
+  },
 ];
 
 describe('signal queries migration', () => {
@@ -187,13 +230,17 @@ describe('signal queries migration', () => {
   describe('declaration test cases', () => {
     for (const c of declarationTestCases) {
       (c.focus ? fit : it)(c.id, async () => {
-        const {fs} = await runTsurgeMigration(new SignalQueriesMigration(), [
-          {
-            name: absoluteFrom('/app.component.ts'),
-            isProgramRootFile: true,
-            contents: populateDeclarationTestCaseComponent(c.before),
-          },
-        ]);
+        const {fs} = await runTsurgeMigration(
+          new SignalQueriesMigration(),
+          [
+            {
+              name: absoluteFrom('/app.component.ts'),
+              isProgramRootFile: true,
+              contents: populateDeclarationTestCaseComponent(c.before),
+            },
+          ],
+          c.options,
+        );
 
         let actual = fs.readFile(absoluteFrom('/app.component.ts'));
         let expected = populateDeclarationTestCaseComponent(c.after);
@@ -1303,6 +1350,45 @@ describe('signal queries migration', () => {
     ).not.toBeRejected();
   });
 
+  it('should properly deal with union types of single queries', async () => {
+    const {fs} = await runTsurgeMigration(new SignalQueriesMigration({}), [
+      {
+        name: absoluteFrom('/app.component.ts'),
+        isProgramRootFile: true,
+        contents: dedent`
+          import {ViewChild, ElementRef, Component} from '@angular/core';
+
+          @Component({
+            template: '',
+          })
+          class MyComp {
+            @ViewChild(MyService) bla: MyService|undefined = undefined;
+            @ViewChild(MyService) bla2?: MyService;
+            @ViewChild(MyService) bla3: MyService|null = null;
+            @ViewChild(MyService) bla4: MyService|SomethingUnrelated = null!;
+            @ViewChild(MyService) bla5!: MyService|SomethingUnrelated;
+          }
+        `,
+      },
+    ]);
+
+    const actual = fs.readFile(absoluteFrom('/app.component.ts'));
+    expect(actual).toMatchWithDiff(`
+      import {ViewChild, ElementRef, Component, viewChild} from '@angular/core';
+
+      @Component({
+        template: '',
+      })
+      class MyComp {
+        readonly bla = viewChild(MyService);
+        readonly bla2 = viewChild(MyService);
+        @ViewChild(MyService) bla3: MyService|null = null;
+        @ViewChild(MyService) bla4: MyService|SomethingUnrelated = null!;
+        @ViewChild(MyService) bla5!: MyService|SomethingUnrelated;
+      }
+    `);
+  });
+
   describe('--best-effort-mode', () => {
     it('should be possible to forcibly migrate even with a detected `.changes` access', async () => {
       const {fs} = await runTsurgeMigration(new SignalQueriesMigration({bestEffortMode: true}), [
@@ -1460,6 +1546,82 @@ describe('signal queries migration', () => {
       `);
     });
   });
+
+  it(`should be able to compute statistics`, async () => {
+    const {getStatistics} = await runTsurgeMigration(
+      new SignalQueriesMigration({insertTodosForSkippedFields: true}),
+      [
+        {
+          name: absoluteFrom('/app.component.ts'),
+          isProgramRootFile: true,
+          contents: dedent`
+            import {ViewChild, ViewChildren, QueryList, ElementRef, Component} from '@angular/core';
+
+            @Component({
+              template: '',
+            })
+            class MyComp {
+              @ViewChildren('label')
+              set labels(list: QueryList<ElementRef>) {}
+
+              @ViewChildren('refs') bla!: QueryList<ElementRef>;
+              @ViewChild('refs') blaWrittenTo?: ElementRef;
+
+              click() {
+                this.blaWrittenTo = undefined;
+              }
+            }
+        `,
+        },
+      ],
+    );
+
+    expect(await getStatistics()).toEqual({
+      counters: {
+        queriesCount: 3,
+        multiQueries: 2,
+        incompatibleQueries: 2,
+        'incompat-field-Accessor': 1,
+        'incompat-field-WriteAssignment': 1,
+      },
+    });
+  });
+
+  it(`should skip queries that are annotated with @HostBinding`, async () => {
+    const {fs} = await runTsurgeMigration(
+      new SignalQueriesMigration({insertTodosForSkippedFields: true}),
+      [
+        {
+          name: absoluteFrom('/app.component.ts'),
+          isProgramRootFile: true,
+          contents: dedent`
+            import {ViewChild, HostBinding, Component, ElementRef} from '@angular/core';
+
+            @Component({template: ''})
+            class MyComp {
+              @HostBinding('[attr.ref-name]')
+              @ViewChild('ref', {read: RefNameStringToken})
+              ref!: string;
+            }
+        `,
+        },
+      ],
+    );
+
+    expect(fs.readFile(absoluteFrom('/app.component.ts'))).toMatchWithDiff(`
+      import {ViewChild, HostBinding, Component, ElementRef} from '@angular/core';
+
+      @Component({template: ''})
+      class MyComp {
+        // TODO: Skipped for migration because:
+        //  This query is used in combination with \`@HostBinding\` and migrating would
+        //  break.
+        @HostBinding('[attr.ref-name]')
+        @ViewChild('ref', {read: RefNameStringToken})
+        ref!: string;
+      }
+    `);
+  });
 });
 
 function populateDeclarationTestCaseComponent(declaration: string): string {
@@ -1471,6 +1633,8 @@ function populateDeclarationTestCaseComponent(declaration: string): string {
       ContentChildren,
       Directive
     } from '@angular/core';
+
+    type ElementRef = {};
 
     @Directive()
     export class TestDir {

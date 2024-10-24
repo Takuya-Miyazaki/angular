@@ -1434,9 +1434,6 @@
     "name": "getOrCreateViewRefs"
   },
   {
-    "name": "getOriginalError"
-  },
-  {
     "name": "getOutlet"
   },
   {
@@ -1924,6 +1921,9 @@
   },
   {
     "name": "producerAddLiveConsumer"
+  },
+  {
+    "name": "producerMarkClean"
   },
   {
     "name": "producerNotifyConsumers"
